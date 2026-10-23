@@ -23,7 +23,8 @@ Runner = Callable[[list[str]], str]
 
 _NVIDIA_QUERY = [
     "nvidia-smi",
-    "--query-gpu=pci.bus_id,uuid,utilization.gpu,memory.used,memory.total",
+    # name goes last so a comma inside it cannot shift the other fields.
+    "--query-gpu=pci.bus_id,uuid,utilization.gpu,memory.used,memory.total,name",
     "--format=csv,noheader,nounits",
 ]
 _MIB = 1024 * 1024
@@ -35,6 +36,7 @@ class Load:
     vram_used: int | None = None
     vram_total: int | None = None
     uuid: str | None = None
+    name: str | None = None
     source: str = "none"
 
     @property
@@ -86,11 +88,11 @@ def read_nvidia(runner: Runner = _run) -> dict[str, Load]:
     log.debug("nvidia-smi output: %r", out)
     loads = {}
     for line in out.strip().splitlines():
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) != 5:
-            log.warning("nvidia-smi line has %d fields, expected 5: %r", len(parts), line)
+        parts = [p.strip() for p in line.split(",", 5)]
+        if len(parts) != 6:
+            log.warning("nvidia-smi line has %d fields, expected 6: %r", len(parts), line)
             continue
-        bus, uuid, util, used, total = parts
+        bus, uuid, util, used, total, name = parts
         used_n, total_n = _number(used), _number(total)
         try:
             slot = _normalize_bus_id(bus)
@@ -102,6 +104,7 @@ def read_nvidia(runner: Runner = _run) -> dict[str, Load]:
             vram_used=int(used_n * _MIB) if used_n is not None else None,
             vram_total=int(total_n * _MIB) if total_n is not None else None,
             uuid=uuid,
+            name=name,
             source="nvidia-smi",
         )
     return loads

@@ -6,6 +6,7 @@ import argparse
 import logging
 import os
 import shlex
+import shutil
 import sys
 from pathlib import Path
 
@@ -205,6 +206,21 @@ def cmd_side(args) -> int:
     return _cmd_role(args, "side")
 
 
+def cmd_top(args) -> int:
+    from gpubalance import top  # curses loads only for this command
+
+    gpus, cfg, state = _context(args)
+    if args.once:
+        size = shutil.get_terminal_size((100, 40))
+        sys.stdout.write(top.once(gpus, cfg, state, args.log_path, size.columns, size.lines))
+        return 0
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        logger.error("top needs a terminal; use --once for a single plain-text frame")
+        return 2
+    top.run(gpus, cfg, state, args.log_path, max(0.2, args.interval))
+    return 0
+
+
 def cmd_diagnose(args) -> int:
     report = diagnose.collect(
         sysfs_root=Path(args.sysfs),
@@ -300,6 +316,13 @@ def build_parser() -> argparse.ArgumentParser:
     dg.add_argument("--no-redact", action="store_true",
                     help="keep user name, host name and home path in the report")
     dg.set_defaults(func=cmd_diagnose)
+
+    tp = sub.add_parser("top", help="live view of the cards, jobs and log")
+    tp.add_argument("-i", "--interval", type=float, default=1.0,
+                    help="seconds between samples (default 1, minimum 0.2)")
+    tp.add_argument("--once", action="store_true",
+                    help="print one frame as plain text and exit")
+    tp.set_defaults(func=cmd_top)
     return parser
 
 
