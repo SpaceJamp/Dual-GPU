@@ -13,6 +13,32 @@ Each time you start a program through `gpubalance run`, it:
 4. Sets the environment variables that point OpenGL, Vulkan, CUDA, ROCm or oneAPI at that card.
 5. Replaces itself with your program and records the PID, so the next launch knows that card already has a job.
 
+## Game mode: one card renders, one card shows
+
+Plug your monitors into one card. That card is the display card. The other card is the render card and only draws games.
+
+```
+gpubalance roles                      # check which card does what
+gpubalance game -- %command%          # Steam launch option
+gpubalance side -- obs                # keep OBS, Discord, browsers on the display card
+```
+
+The game draws each frame on the render card. Linux (PRIME render offload) copies the finished frame over PCIe to the display card, which sends it to the monitor. Your desktop, browser and other apps stay on the display card, so the render card is free for the game.
+
+`roles` picks automatically: the card with monitors plugged in shows, and the strongest other card renders. To set it yourself, add this to the config:
+
+```toml
+[roles]
+render = "nvidia"
+display = "amd"
+```
+
+Things to know:
+
+- The best supported setup is AMD or Intel as the display card and NVIDIA as the render card. The reverse also works on Wayland with recent NVIDIA drivers, but it gets less testing.
+- Copying each frame costs a little frame rate and adds a little latency. The cost grows with resolution and frame rate, and it is worse if the render card sits in a PCIe x4 slot.
+- If a game ignores the variables and still runs on the display card, check `gpubalance game -v -- <game>` to see what was set, and look for a GPU choice in the game's own settings.
+
 ## What it does not do
 
 It balances per program, at launch. It cannot split one game frame or one CUDA kernel across an NVIDIA and an AMD card. Linux has no driver path for that across vendors. If a program needs two GPUs at once, it has to support that itself (Blender Cycles, some ML frameworks, `llama.cpp` with Vulkan).

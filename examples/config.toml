@@ -25,3 +25,9 @@ allow = ["graphics", "compute"]
 [pin]
 blender = "nvidia"
 obs = "amd"
+
+# Who renders games and who drives the monitors for `game` and `side`.
+# Leave out to decide from where your monitors are plugged in.
+[roles]
+render = "nvidia"
+display = "amd"

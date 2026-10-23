@@ -73,6 +73,38 @@ def score_all(
     return sorted(scored, key=lambda s: (s.score, s.gpu.pci_slot))
 
 
+ROLES = ("render", "display")
+
+
+def _by_target(gpus: list[Gpu], target: str) -> Gpu:
+    for gpu in gpus:
+        if matches(gpu, target):
+            return gpu
+    raise NoGpuError(f"no GPU matches '{target}'")
+
+
+def assign_roles(gpus: list[Gpu], cfg: Config) -> dict[str, Gpu]:
+    """Split the cards into one that shows the picture and one that renders.
+
+    Without config, the card with the most monitors plugged in is the
+    display card, and the strongest remaining card renders. Capacity from
+    the config decides "strongest"; ties go to the lower PCI slot.
+    """
+    if not gpus:
+        raise NoGpuError("no GPUs found")
+    if cfg.display:
+        display = _by_target(gpus, cfg.display)
+    else:
+        # max() keeps the first of equal items, and gpus is sorted by slot.
+        display = max(gpus, key=lambda g: g.displays)
+    if cfg.render:
+        render = _by_target(gpus, cfg.render)
+    else:
+        others = [g for g in gpus if g is not display] or gpus
+        render = max(others, key=lambda g: cfg.prefs(g.pci_slot).capacity)
+    return {"render": render, "display": display}
+
+
 def choose(
     gpus: list[Gpu],
     loads: dict[str, Load],

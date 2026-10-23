@@ -36,7 +36,7 @@ def cmd_list(args) -> int:
         return 1
     for g in gpus:
         print(f"{g.card:<7} {g.pci_slot}  {g.vendor:<7} {g.pci_id}  "
-              f"driver={g.driver:<8} render={g.render_node or '-'}")
+              f"driver={g.driver:<8} render={g.render_node or '-'}  monitors={g.displays}")
     return 0
 
 
@@ -82,28 +82,73 @@ def cmd_pick(args) -> int:
     return 0
 
 
-def cmd_run(args) -> int:
+def _command(args) -> list[str] | None:
     command = args.command
     if command and command[0] == "--":
         command = command[1:]
     if not command:
-        print("gpubalance run: no command given", file=sys.stderr)
-        return 2
-    gpus, cfg, state = _context(args)
-    chosen, env = _pick(args, gpus, cfg, state, command)
+        print(f"gpubalance {args.cmd}: no command given", file=sys.stderr)
+    return command or None
+
+
+def _launch(args, state, gpu, kind, command, env, note) -> int:
     if args.verbose or args.dry_run:
-        print(f"gpubalance: {chosen.gpu.label} (score {chosen.score:.2f})", file=sys.stderr)
+        print(f"gpubalance: {gpu.label} ({note})", file=sys.stderr)
         for key, value in env.items():
             print(f"  {key}={value}", file=sys.stderr)
     if args.dry_run:
         return 0
     # exec keeps our PID, so the record disappears when the program exits.
-    state.add(os.getpid(), chosen.gpu.pci_slot, args.kind, shlex.join(command))
+    state.add(os.getpid(), gpu.pci_slot, kind, shlex.join(command))
     try:
         os.execvpe(command[0], command, {**os.environ, **env})
     except OSError as exc:
         print(f"gpubalance: cannot run {command[0]}: {exc}", file=sys.stderr)
         return 127
+
+
+def cmd_run(args) -> int:
+    command = _command(args)
+    if not command:
+        return 2
+    gpus, cfg, state = _context(args)
+    chosen, env = _pick(args, gpus, cfg, state, command)
+    return _launch(args, state, chosen.gpu, args.kind, command, env,
+                   f"score {chosen.score:.2f}")
+
+
+def cmd_roles(args) -> int:
+    gpus, cfg, _ = _context(args)
+    roles = policy.assign_roles(gpus, cfg)
+    for role in policy.ROLES:
+        gpu = roles[role]
+        print(f"{role:<8} {gpu.label}  monitors={gpu.displays}")
+    if roles["render"] is roles["display"]:
+        print("\nOnly one card is available, so it does both jobs.")
+    elif roles["render"].displays:
+        print("\nThe render card also has a monitor plugged in. Games on that "
+              "monitor skip the copy, but the card is not dedicated to rendering.")
+    return 0
+
+
+def _cmd_role(args, role: str) -> int:
+    command = _command(args)
+    if not command:
+        return 2
+    gpus, cfg, state = _context(args)
+    gpu = policy.assign_roles(gpus, cfg)[role]
+    # The finished frames always land on the display card for scan-out;
+    # these variables only decide where the drawing happens.
+    env = launch.build_env(gpu, gpus, "graphics")
+    return _launch(args, state, gpu, role, command, env, f"{role} card")
+
+
+def cmd_game(args) -> int:
+    return _cmd_role(args, "render")
+
+
+def cmd_side(args) -> int:
+    return _cmd_role(args, "display")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -135,6 +180,18 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("-v", "--verbose", action="store_true")
     run.add_argument("command", nargs=argparse.REMAINDER)
     run.set_defaults(func=cmd_run)
+
+    sub.add_parser("roles", help="show which card renders and which drives the monitors"
+                   ).set_defaults(func=cmd_roles)
+    for name, func, text in (
+        ("game", cmd_game, "run a game on the render card"),
+        ("side", cmd_side, "run a background app (OBS, Discord, browser) on the display card"),
+    ):
+        p = sub.add_parser(name, help=text)
+        p.add_argument("-n", "--dry-run", action="store_true", help="show the choice, do not run")
+        p.add_argument("-v", "--verbose", action="store_true")
+        p.add_argument("command", nargs=argparse.REMAINDER)
+        p.set_defaults(func=func)
     return parser
 
 

@@ -20,6 +20,12 @@ def make_card(root: Path, card: str, slot: str, vendor: str, device: str,
     return dev
 
 
+def plug_monitor(root: Path, connector: str) -> None:
+    conn = root / "class" / "drm" / connector
+    conn.mkdir(parents=True, exist_ok=True)
+    (conn / "status").write_text("connected\n")
+
+
 def make_mixed(root: Path, amd_busy: int = 10) -> Path:
     make_card(root, "card0", "0000:01:00.0", "0x10de", "0x2684", "nvidia", "renderD128")
     make_card(root, "card1", "0000:03:00.0", "0x1002", "0x744c", "amdgpu", "renderD129", {

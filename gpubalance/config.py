@@ -32,6 +32,10 @@ class Config:
     gpus: dict[str, GpuPrefs] = field(default_factory=dict)
     # Executable name -> vendor ("amd") or PCI slot ("0000:03:00.0").
     pins: dict[str, str] = field(default_factory=dict)
+    # Fixed roles for `game` and `side`. None means work it out from
+    # which card has monitors plugged in.
+    render: str | None = None
+    display: str | None = None
 
     def prefs(self, pci_slot: str) -> GpuPrefs:
         return self.gpus.get(pci_slot, GpuPrefs())
@@ -51,6 +55,8 @@ def load(path: Path | None = None) -> Config:
         unknown_util=float(data.get("unknown_utilization", 0.5)),
         samples=int(data.get("samples", 5)),
         pins={str(k): str(v) for k, v in data.get("pin", {}).items()},
+        render=data.get("roles", {}).get("render"),
+        display=data.get("roles", {}).get("display"),
     )
     for slot, prefs in data.get("gpu", {}).items():
         cfg.gpus[slot] = GpuPrefs(

@@ -30,6 +30,8 @@ class Gpu:
     driver: str
     sysfs: Path
     render_node: str | None = None
+    # Monitors currently plugged into this card.
+    displays: int = 0
 
     @property
     def label(self) -> str:
@@ -54,6 +56,14 @@ def _uevent(device: Path) -> dict[str, str]:
         key, _, value = line.partition("=")
         fields[key] = value
     return fields
+
+
+def _connected_displays(drm: Path, card: str) -> int:
+    # Connectors live beside the card as cardN-<type>-<n>, e.g. card1-DP-2.
+    return sum(
+        1 for conn in drm.glob(f"{card}-*")
+        if _read(conn / "status") == "connected"
+    )
 
 
 def discover(sysfs_root: Path = Path("/sys")) -> list[Gpu]:
@@ -88,5 +98,6 @@ def discover(sysfs_root: Path = Path("/sys")) -> list[Gpu]:
             driver=uevent.get("DRIVER", "unknown"),
             sysfs=device,
             render_node=f"/dev/dri/{render[0].name}" if render else None,
+            displays=_connected_displays(drm, entry.name),
         )
     return sorted(found.values(), key=lambda g: g.pci_slot)

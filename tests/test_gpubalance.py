@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fakesys import make_mixed, nvidia_smi  # noqa: E402
+from fakesys import make_mixed, nvidia_smi, plug_monitor  # noqa: E402
 from gpubalance import config, detect, launch, metrics, policy  # noqa: E402
 from gpubalance.state import State  # noqa: E402
 
@@ -105,6 +105,33 @@ class LaunchTest(Base):
         self.assertEqual(env["CUDA_VISIBLE_DEVICES"], "0")
 
 
+class RolesTest(Base):
+    def test_monitor_card_displays_and_other_card_renders(self):
+        plug_monitor(self.sys, "card1-DP-1")
+        gpus = detect.discover(self.sys)
+        self.assertEqual([g.displays for g in gpus], [0, 1])
+        roles = policy.assign_roles(gpus, config.Config())
+        self.assertEqual(roles["display"].vendor, "amd")
+        self.assertEqual(roles["render"].vendor, "nvidia")
+
+    def test_disconnected_connectors_do_not_count(self):
+        conn = self.sys / "class" / "drm" / "card0-HDMI-A-1"
+        conn.mkdir()
+        (conn / "status").write_text("disconnected\n")
+        self.assertEqual(detect.discover(self.sys)[0].displays, 0)
+
+    def test_config_overrides_roles(self):
+        plug_monitor(self.sys, "card1-DP-1")
+        cfg = config.Config(render="amd", display="nvidia")
+        roles = policy.assign_roles(detect.discover(self.sys), cfg)
+        self.assertEqual(roles["render"].vendor, "amd")
+        self.assertEqual(roles["display"].vendor, "nvidia")
+
+    def test_single_gpu_does_both(self):
+        roles = policy.assign_roles([self.amd], config.Config())
+        self.assertIs(roles["render"], roles["display"])
+
+
 class StateTest(Base):
     def test_dead_pids_are_pruned(self):
         state = State(self.root / "state.json")
@@ -119,7 +146,7 @@ class ConfigTest(unittest.TestCase):
     def test_parses_toml(self):
         with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
             f.write('[weights]\njobs = 1.0\n[gpu."0000:01:00.0"]\ncapacity = 1.8\n'
-                    '[pin]\nblender = "nvidia"\n')
+                    '[pin]\nblender = "nvidia"\n[roles]\nrender = "nvidia"\n')
         try:
             cfg = config.load(Path(f.name))
         finally:
@@ -127,6 +154,8 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(cfg.w_jobs, 1.0)
         self.assertEqual(cfg.prefs("0000:01:00.0").capacity, 1.8)
         self.assertEqual(cfg.pins["blender"], "nvidia")
+        self.assertEqual(cfg.render, "nvidia")
+        self.assertIsNone(cfg.display)
 
 
 class CliTest(Base):
@@ -149,6 +178,16 @@ class CliTest(Base):
         out = self.run_cli("run", "-g", "amd", "--", "sh", "-c", "echo $DRI_PRIME")
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(out.stdout.strip(), "pci-0000_03_00_0")
+
+    def test_game_and_side_split_cards(self):
+        plug_monitor(self.sys, "card1-DP-1")
+        out = self.run_cli("roles")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("render   nvidia@0000:01:00.0", out.stdout)
+        out = self.run_cli("game", "--", "sh", "-c", "echo $__NV_PRIME_RENDER_OFFLOAD")
+        self.assertEqual(out.stdout.strip(), "1", out.stderr)
+        out = self.run_cli("side", "--", "sh", "-c", "echo $DRI_PRIME")
+        self.assertEqual(out.stdout.strip(), "pci-0000_03_00_0", out.stderr)
 
 
 if __name__ == "__main__":
