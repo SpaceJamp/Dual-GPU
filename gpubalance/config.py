@@ -33,6 +33,12 @@ class Config:
     w_util: float = 1.0
     w_vram: float = 0.5
     w_jobs: float = 0.3
+    # Heat penalty: 0 at heat_start_c, rising in a straight line to the
+    # full weight at heat_full_c and above. 1.0 makes a card at 85 C look
+    # as bad as one at 100% utilization.
+    w_heat: float = 1.0
+    heat_start_c: float = 75.0
+    heat_full_c: float = 85.0
     # Load assumed for a GPU we cannot read (0..1).
     unknown_util: float = 0.5
     samples: int = 5
@@ -63,12 +69,18 @@ def load(path: Path | None = None) -> Config:
         w_util=float(weights.get("utilization", 1.0)),
         w_vram=float(weights.get("vram", 0.5)),
         w_jobs=float(weights.get("jobs", 0.3)),
+        w_heat=float(weights.get("heat", 1.0)),
+        heat_start_c=float(data.get("heat", {}).get("start_c", 75.0)),
+        heat_full_c=float(data.get("heat", {}).get("full_c", 85.0)),
         unknown_util=float(data.get("unknown_utilization", 0.5)),
         samples=int(data.get("samples", 5)),
         pins={str(k): str(v) for k, v in data.get("pin", {}).items()},
         render=data.get("roles", {}).get("render"),
         display=data.get("roles", {}).get("display"),
     )
+    if cfg.heat_full_c <= cfg.heat_start_c:
+        raise ConfigError(f"{path}: [heat] full_c ({cfg.heat_full_c}) must be above "
+                          f"start_c ({cfg.heat_start_c})")
     for slot, prefs in data.get("gpu", {}).items():
         cfg.gpus[slot] = GpuPrefs(
             capacity=float(prefs.get("capacity", 1.0)),

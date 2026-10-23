@@ -9,7 +9,9 @@ Each time you start a program through `gpubalance run`, it:
 1. Finds every GPU through `/sys/class/drm`, no vendor tools needed.
 2. Reads current load: AMD from sysfs (`gpu_busy_percent`, `mem_info_vram_*`), NVIDIA from `nvidia-smi`.
 3. Scores each card. Lower wins.
-   `score = (1.0 * util + 0.5 * vram_used + 0.3 * running_jobs) / capacity`
+   `score = (1.0 * util + 0.5 * vram_used + 0.3 * running_jobs + 1.0 * heat) / capacity`
+
+   `heat` is 0 up to 75°C and rises in a straight line to 1 at 85°C. A hot card is never refused, it just loses new work to a cooler one. Once both cards are at 85°C or more, both carry the full penalty and load decides as usual. A card with no temperature reading gets no penalty. Only new launches are affected; nothing already running is moved.
 4. Sets the environment variables that point OpenGL, Vulkan, CUDA, ROCm or oneAPI at that card.
 5. Replaces itself with your program and records the PID, so the next launch knows that card already has a job.
 
@@ -134,7 +136,8 @@ Copy `examples/config.toml` to `~/.config/gpubalance/config.toml`. You can set:
 - `capacity` per card, so a stronger card takes more work.
 - `allow` per card, for example keep compute off the card driving your monitors.
 - `[pin]` rules that always send a program to one card.
-- Score weights.
+- Score weights, including `heat` (set it to 0 to turn the heat penalty off).
+- `[heat]` `start_c` and `full_c`, the range where the heat penalty rises.
 
 ## Live view
 
