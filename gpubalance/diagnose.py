@@ -177,7 +177,7 @@ def collect(
         report["roles"] = {"error": str(exc)}
     report["scores"] = [
         {"gpu": s.gpu.label, "score": round(s.score, 3), "util": s.util,
-         "vram": round(s.vram, 3), "jobs": s.jobs}
+         "vram": round(s.vram, 3), "jobs": s.jobs, "heat": round(s.heat, 3)}
         for s in policy.score_all(gpus, loads, {}, cfg)
     ]
 

@@ -1,16 +1,26 @@
 # Copy to ~/.config/gpubalance/config.toml
 
-# Lower score wins. util and vram are fractions (0 to 1); jobs is a count.
-[weights]
-utilization = 1.0
-vram = 0.5
-jobs = 0.3
+# Plain keys must come before the first [table]; after one, TOML puts
+# them inside that table.
 
 # Load to assume for a GPU whose counters can't be read (0 to 1).
 unknown_utilization = 0.5
 
 # AMD utilization reads, 100 ms apart, averaged per decision.
 samples = 5
+
+# Lower score wins. util and vram are fractions (0 to 1); jobs is a count.
+# heat is 0 at [heat] start_c and 1 at full_c or above; 0 turns it off.
+[weights]
+utilization = 1.0
+vram = 0.5
+jobs = 0.3
+heat = 1.0
+
+# Where the heat penalty starts and where it reaches full weight, in C.
+[heat]
+start_c = 75
+full_c = 85
 
 # Per card settings, keyed by PCI slot from `gpubalance list`.
 [gpu."0000:01:00.0"]

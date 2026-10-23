@@ -2,11 +2,15 @@
 
 Each eligible GPU gets a score, lower is better:
 
-    score = (w_util * util + w_vram * vram_used_fraction + w_jobs * jobs) / capacity
+    score = (w_util * util + w_vram * vram_used_fraction + w_jobs * jobs
+             + w_heat * heat) / capacity
 
 util and vram are 0..1. jobs is how many programs this tool already sent
-to that GPU and that are still running. capacity lets you tell the tool
-that one card is stronger than the other.
+to that GPU and that are still running. heat is 0 up to 75 C and rises to
+1 at 85 C, so a hot card loses new work without ever being refused.
+Between 75 and 85 C the cooler card is favored; once both are at 85 C or
+more, both carry the full penalty and load decides as usual. capacity
+lets you tell the tool that one card is stronger than the other.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ class Scored:
     util: float
     vram: float
     jobs: int
+    heat: float = 0.0
 
 
 class NoGpuError(RuntimeError):
@@ -57,6 +62,15 @@ def matches(gpu: Gpu, target: str) -> bool:
     return target in (gpu.vendor, gpu.pci_slot, gpu.card)
 
 
+def heat_penalty(temp_c: float | None, cfg: Config) -> float:
+    """0..1. Unknown temperature costs nothing: no data is not a reason
+    to avoid a card."""
+    if temp_c is None:
+        return 0.0
+    span = cfg.heat_full_c - cfg.heat_start_c
+    return max(0.0, min(1.0, (temp_c - cfg.heat_start_c) / span))
+
+
 def score_all(
     gpus: list[Gpu],
     loads: dict[str, Load],
@@ -73,14 +87,23 @@ def score_all(
         vram = load.vram_frac if load.vram_frac is not None else 0.0
         count = jobs.get(gpu.pci_slot, 0)
         capacity = max(cfg.prefs(gpu.pci_slot).capacity, 0.01)
-        raw = cfg.w_util * util + cfg.w_vram * vram + cfg.w_jobs * count
-        scored.append(Scored(gpu, raw / capacity, util, vram, count))
+        heat = heat_penalty(load.temp_c, cfg)
+        raw = (cfg.w_util * util + cfg.w_vram * vram + cfg.w_jobs * count
+               + cfg.w_heat * heat)
+        scored.append(Scored(gpu, raw / capacity, util, vram, count, heat))
         log.debug(
-            "score %s = (%.2f*util %.2f%s + %.2f*vram %.2f + %.2f*jobs %d) / capacity %.2f = %.3f",
+            "score %s = (%.2f*util %.2f%s + %.2f*vram %.2f + %.2f*jobs %d + %.2f*heat %.2f%s)"
+            " / capacity %.2f = %.3f",
             gpu.label, cfg.w_util, util, " (assumed)" if load.util is None else "",
-            cfg.w_vram, vram, cfg.w_jobs, count, capacity, raw / capacity,
-            extra={"data": {"gpu": gpu.pci_slot, "util": util, "vram": vram,
-                            "jobs": count, "capacity": capacity, "score": raw / capacity}})
+            cfg.w_vram, vram, cfg.w_jobs, count, cfg.w_heat, heat,
+            f" ({load.temp_c:.0f} C)" if load.temp_c is not None else "",
+            capacity, raw / capacity,
+            extra={"data": {"gpu": gpu.pci_slot, "util": util, "vram": vram, "jobs": count,
+                            "heat": heat, "temp_c": load.temp_c, "capacity": capacity,
+                            "score": raw / capacity}})
+        if heat >= 1.0:
+            log.info("%s is at %.0f C; new work goes elsewhere if another card is cooler",
+                     gpu.label, load.temp_c)
     # Ties go to the lower PCI slot so results are stable.
     return sorted(scored, key=lambda s: (s.score, s.gpu.pci_slot))
 
