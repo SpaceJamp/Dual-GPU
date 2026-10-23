@@ -123,8 +123,11 @@ def cmd_roles(args) -> int:
     for role in policy.ROLES:
         gpu = roles[role]
         print(f"{role:<8} {gpu.label}  monitors={gpu.displays}")
-    if roles["render"] is roles["display"]:
-        print("\nOnly one card is available, so it does both jobs.")
+    if len(gpus) == 1:
+        print("\nOnly one card is available, so it does every job.")
+    elif roles["render"] is roles["display"]:
+        print("\nGames run on the monitor card with no frame copy. "
+              "Background apps and models go to the other card.")
     elif roles["render"].displays:
         print("\nThe render card also has a monitor plugged in. Games on that "
               "monitor skip the copy, but the card is not dedicated to rendering.")
@@ -140,6 +143,12 @@ def _cmd_role(args, role: str) -> int:
     # The finished frames always land on the display card for scan-out;
     # these variables only decide where the drawing happens.
     env = launch.build_env(gpu, gpus, "graphics")
+    if (gpu.driver == "nvidia" and not gpu.displays
+            and sum(g.driver == "nvidia" for g in gpus) > 1):
+        # NVIDIA's OpenGL offload switch cannot pick between two NVIDIA
+        # cards. Vulkan still can, through MESA_VK_DEVICE_SELECT.
+        print("gpubalance: two NVIDIA cards; Vulkan programs will follow this "
+              "choice, OpenGL programs may not", file=sys.stderr)
     return _launch(args, state, gpu, role, command, env, f"{role} card")
 
 
@@ -148,21 +157,22 @@ def cmd_llm(args) -> int:
     if not command:
         return 2
     gpus, cfg, state = _context(args)
-    skip: tuple[str, ...] = ()
-    if args.leave_game_card:
-        render = policy.assign_roles(gpus, cfg)["render"]
-        # llama.cpp names devices by model, not PCI slot, so we can only
-        # tell cards apart by vendor.
-        if sum(g.vendor == render.vendor for g in gpus) > 1:
-            print("gpubalance: both cards share a vendor; cannot keep the "
-                  "game card free", file=sys.stderr)
-            return 1
-        skip = (render.vendor,)
     try:
         devices = llm.list_devices(command[0])
         if not devices:
             raise llm.LlmError(f"{command[0]} --list-devices found no GPUs; "
                                "is this a llama.cpp build with GPU support?")
+        slots = llm.map_slots(devices, gpus)
+        skip: frozenset[str] = frozenset()
+        if args.leave_game_card:
+            render = policy.assign_roles(gpus, cfg)["render"]
+            unknown = [d.name for d in llm.one_per_card(devices)
+                       if slots[d.name] is None and d.vendor == render.vendor]
+            if unknown:
+                raise llm.LlmError(
+                    f"cannot tell which of {', '.join(unknown)} is the game card; "
+                    "a llama.cpp build with CUDA can tell NVIDIA cards apart")
+            skip = frozenset(n for n, slot in slots.items() if slot == render.pci_slot)
         chosen, shares = llm.plan(devices, args.mode, args.reserve, skip)
     except llm.LlmError as exc:
         print(f"gpubalance: {exc}", file=sys.stderr)
@@ -176,10 +186,9 @@ def cmd_llm(args) -> int:
     if args.dry_run:
         return 0
     main = chosen[shares.index(max(shares))]
-    slot = next((g.pci_slot for g in gpus if g.vendor == main.vendor), main.name)
-    state.add(os.getpid(), slot, "llm", shlex.join(full))
+    state.add(os.getpid(), slots.get(main.name) or main.name, "llm", shlex.join(full))
     try:
-        os.execvp(full[0], full)
+        os.execvpe(full[0], full, {**os.environ, **llm.LAUNCH_ENV})
     except OSError as exc:
         print(f"gpubalance: cannot run {full[0]}: {exc}", file=sys.stderr)
         return 127
@@ -190,7 +199,7 @@ def cmd_game(args) -> int:
 
 
 def cmd_side(args) -> int:
-    return _cmd_role(args, "display")
+    return _cmd_role(args, "side")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -227,7 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
                    ).set_defaults(func=cmd_roles)
     for name, func, text in (
         ("game", cmd_game, "run a game on the render card"),
-        ("side", cmd_side, "run a background app (OBS, Discord, browser) on the display card"),
+        ("side", cmd_side, "run a background app (OBS, Discord, browser) off the game card"),
     ):
         p = sub.add_parser(name, help=text)
         p.add_argument("-n", "--dry-run", action="store_true", help="show the choice, do not run")

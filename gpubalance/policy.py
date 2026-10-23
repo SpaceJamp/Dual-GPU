@@ -73,22 +73,28 @@ def score_all(
     return sorted(scored, key=lambda s: (s.score, s.gpu.pci_slot))
 
 
-ROLES = ("render", "display")
+ROLES = ("render", "display", "side")
 
 
 def _by_target(gpus: list[Gpu], target: str) -> Gpu:
-    for gpu in gpus:
-        if matches(gpu, target):
-            return gpu
-    raise NoGpuError(f"no GPU matches '{target}'")
+    found = [g for g in gpus if matches(g, target)]
+    if not found:
+        raise NoGpuError(f"no GPU matches '{target}'")
+    if len(found) > 1:
+        raise NoGpuError(f"'{target}' matches {len(found)} cards; use a PCI slot "
+                         "from `gpubalance list` instead")
+    return found[0]
 
 
 def assign_roles(gpus: list[Gpu], cfg: Config) -> dict[str, Gpu]:
-    """Split the cards into one that shows the picture and one that renders.
+    """Decide which card shows the picture, which renders games, and which
+    takes background work.
 
     Without config, the card with the most monitors plugged in is the
     display card, and the strongest remaining card renders. Capacity from
-    the config decides "strongest"; ties go to the lower PCI slot.
+    the config decides "strongest"; ties go to the lower PCI slot. Setting
+    render and display to the same card is allowed: the game then runs
+    where the monitor is, with no frame copy.
     """
     if not gpus:
         raise NoGpuError("no GPUs found")
@@ -102,7 +108,11 @@ def assign_roles(gpus: list[Gpu], cfg: Config) -> dict[str, Gpu]:
     else:
         others = [g for g in gpus if g is not display] or gpus
         render = max(others, key=lambda g: cfg.prefs(g.pci_slot).capacity)
-    return {"render": render, "display": display}
+    # Background apps go to the display card, unless the game renders
+    # there too (monitor on the strongest card); then to the spare card.
+    spare = [g for g in gpus if g is not render]
+    side = display if display is not render else (spare[0] if spare else render)
+    return {"render": render, "display": display, "side": side}
 
 
 def choose(

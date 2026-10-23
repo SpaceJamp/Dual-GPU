@@ -127,9 +127,22 @@ class RolesTest(Base):
         self.assertEqual(roles["render"].vendor, "amd")
         self.assertEqual(roles["display"].vendor, "nvidia")
 
+    def test_monitor_on_strongest_card(self):
+        # RTX 5080 drives the monitor and renders; the spare card gets the rest.
+        plug_monitor(self.sys, "card0-DP-1")
+        cfg = config.Config(render="0000:01:00.0")
+        roles = policy.assign_roles(detect.discover(self.sys), cfg)
+        self.assertIs(roles["render"], roles["display"])
+        self.assertEqual(roles["side"].vendor, "amd")
+
+    def test_ambiguous_vendor_is_refused(self):
+        with self.assertRaises(policy.NoGpuError):
+            policy.assign_roles([self.nv, self.nv], config.Config(render="nvidia"))
+
     def test_single_gpu_does_both(self):
         roles = policy.assign_roles([self.amd], config.Config())
         self.assertIs(roles["render"], roles["display"])
+        self.assertIs(roles["side"], self.amd)
 
 
 class StateTest(Base):

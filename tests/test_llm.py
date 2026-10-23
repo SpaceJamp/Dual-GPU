@@ -9,7 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fakesys import make_mixed, plug_monitor  # noqa: E402
+from fakesys import make_card, make_mixed, plug_monitor  # noqa: E402
+from gpubalance import detect  # noqa: E402
 from gpubalance import llm  # noqa: E402
 
 # A build with CUDA and Vulkan sees the NVIDIA card twice.
@@ -45,7 +46,7 @@ class LlmTest(unittest.TestCase):
     def test_single_and_skip(self):
         chosen, _ = llm.plan(self.devices, mode="single")
         self.assertEqual([d.name for d in chosen], ["CUDA0"])
-        chosen, _ = llm.plan(self.devices, skip_vendors=("nvidia",))
+        chosen, _ = llm.plan(self.devices, skip=frozenset({"CUDA0"}))
         self.assertEqual([d.name for d in chosen], ["Vulkan1"])
         args = llm.build_args(["llama-cli"], chosen, [1])
         self.assertNotIn("--tensor-split", args)
@@ -58,6 +59,42 @@ class LlmTest(unittest.TestCase):
     def test_reserve_bigger_than_free(self):
         with self.assertRaises(llm.LlmError):
             llm.plan(self.devices, reserve_mib=30000)
+
+
+# RTX 5080 plus RTX 4070 Ti SUPER: same vendor, same 16 GB.
+TWO_NVIDIA = """\
+Available devices:
+  CUDA0: NVIDIA GeForce RTX 5080 (16303 MiB, 15000 MiB free)
+  CUDA1: NVIDIA GeForce RTX 4070 Ti SUPER (16376 MiB, 16000 MiB free)
+  Vulkan0: NVIDIA GeForce RTX 4070 Ti SUPER (16376 MiB, 16000 MiB free)
+  Vulkan1: NVIDIA GeForce RTX 5080 (16303 MiB, 15000 MiB free)
+"""
+
+
+class TwoNvidiaTest(unittest.TestCase):
+    def setUp(self):
+        self.devices = llm.parse_devices(TWO_NVIDIA)
+
+    def test_two_cards_with_same_memory_are_kept(self):
+        self.assertEqual([d.name for d in llm.one_per_card(self.devices)], ["CUDA0", "CUDA1"])
+
+    def test_model_names_need_exact_match(self):
+        a = llm.LlamaDevice("CUDA0", "NVIDIA GeForce RTX 4070", 12000, 0)
+        b = llm.LlamaDevice("Vulkan0", "NVIDIA GeForce RTX 4070 Ti SUPER", 12000, 0)
+        c = llm.LlamaDevice("Vulkan1", "AMD Radeon RX 9060 XT (RADV GFX1200)", 0, 0)
+        d = llm.LlamaDevice("ROCm0", "AMD Radeon RX 9060 XT", 0, 0)
+        self.assertFalse(llm._same_model(a, b))
+        self.assertTrue(llm._same_model(c, d))
+
+    def test_cuda_maps_by_pci_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make_card(root, "card0", "0000:01:00.0", "0x10de", "0x2c02", "nvidia", "renderD128")
+            make_card(root, "card1", "0000:05:00.0", "0x10de", "0x2705", "nvidia", "renderD129")
+            slots = llm.map_slots(self.devices, detect.discover(root))
+        self.assertEqual(slots["CUDA0"], "0000:01:00.0")
+        self.assertEqual(slots["CUDA1"], "0000:05:00.0")
+        self.assertIsNone(slots["Vulkan0"])
 
 
 class LlmCliTest(unittest.TestCase):
@@ -94,6 +131,12 @@ class LlmCliTest(unittest.TestCase):
         out = self.run_cli("llm", "--leave-game-card", "--", self.fake, "-m", "m.gguf")
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(out.stdout.strip(), "-m m.gguf --device Vulkan1")
+
+    def test_child_gets_pci_order(self):
+        fake = Path(self.fake)
+        fake.write_text(fake.read_text().replace('echo "$@"', 'echo "$CUDA_DEVICE_ORDER"'))
+        out = self.run_cli("llm", "--", self.fake)
+        self.assertEqual(out.stdout.strip(), "PCI_BUS_ID", out.stderr)
 
 
 if __name__ == "__main__":

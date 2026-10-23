@@ -20,7 +20,7 @@ Plug your monitors into one card. That card is the display card. The other card 
 ```
 gpubalance roles                      # check which card does what
 gpubalance game -- %command%          # Steam launch option
-gpubalance side -- obs                # keep OBS, Discord, browsers on the display card
+gpubalance side -- obs                # keep OBS, Discord, browsers off the game card
 ```
 
 The game draws each frame on the render card. Linux (PRIME render offload) copies the finished frame over PCIe to the display card, which sends it to the monitor. Your desktop, browser and other apps stay on the display card, so the render card is free for the game.
@@ -70,6 +70,29 @@ Things to know:
 - The slower card sets the pace for its share. If one card is much slower, `-m single` on the fast card can win for models that fit.
 - Ollama and LM Studio manage GPUs themselves. Use `gpubalance run -k compute -- ollama serve` to pick a card for Ollama.
 
+## Example: RTX 5080 plus RTX 4070 Ti SUPER
+
+With two NVIDIA cards, keep the monitor on the stronger card and let it render games too. There is no frame copy, so games run at full speed. The second card takes models and background work.
+
+Find the 5080's PCI slot with `gpubalance list`, then set:
+
+```toml
+[roles]
+render = "0000:01:00.0"   # the RTX 5080 slot from `gpubalance list`
+```
+
+Then:
+
+```
+gpubalance roles                                     # render and display: 5080, side: 4070 Ti SUPER
+gpubalance llm -- llama-server -m model.gguf         # one model over both cards, 32 GB total
+gpubalance llm --leave-game-card -- llama-server -m model.gguf   # model on the 4070 Ti SUPER only
+```
+
+Use a llama.cpp build with CUDA. With two NVIDIA cards, only CUDA device numbers can be matched to PCI slots, so `--leave-game-card` refuses to guess on a Vulkan-only build. `gpubalance llm` sets `CUDA_DEVICE_ORDER=PCI_BUS_ID` so CUDA0 and CUDA1 follow slot order.
+
+Vendor names such as `nvidia` are refused in `[roles]` when two cards share a vendor. Use the PCI slot.
+
 ## What it does not do
 
 It balances per program, at launch. It cannot split one game frame or one CUDA kernel across an NVIDIA and an AMD card. Linux has no driver path for that across vendors. If a program needs two GPUs at once, it has to support that itself (Blender Cycles, some ML frameworks, `llama.cpp` with Vulkan).
@@ -118,7 +141,7 @@ Copy `examples/config.toml` to `~/.config/gpubalance/config.toml`. You can set:
 - The NVIDIA proprietary driver is required for NVIDIA load data. With `nouveau`, the card reads as 50% busy.
 - Intel load is not read yet. Intel cards also read as 50% busy.
 - Programs that start a helper and exit (some launchers) drop their job record early.
-- With two NVIDIA cards, OpenGL offload may need `__NV_PRIME_RENDER_OFFLOAD_PROVIDER`. Not handled yet.
+- With two NVIDIA cards, Vulkan programs can be steered to either card, but OpenGL programs cannot. Rendering games on the card that drives the monitor avoids the problem.
 - The display is still driven by the card your monitor is plugged into. Rendering on the other card adds a copy across PCIe.
 
 ## Tests
