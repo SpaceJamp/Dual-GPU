@@ -136,6 +136,45 @@ Copy `examples/config.toml` to `~/.config/gpubalance/config.toml`. You can set:
 - `[pin]` rules that always send a program to one card.
 - Score weights.
 
+## Live view
+
+```
+gpubalance top            # live screen, updates every second
+gpubalance top -i 0.5     # update twice a second
+gpubalance top --once     # print one frame as plain text and exit
+```
+
+```
+gpubalance top  14:02:11  every 1.0s
+nvidia@0000:01:00.0  NVIDIA GeForce RTX 5080  nvidia  PCIe x16/x16  [render, display]  score 0.42
+  util ██████████████▍       72%               ▁▂▃▅▇▇▆▅▅▆▇▇▇▆▅▆▇
+  vram █████████████▉        11.2/16.0 GiB     ▅▅▅▆▆▆▆▆▆▆▆▆▆▆▆▆▆
+nvidia@0000:05:00.0  NVIDIA GeForce RTX 4070 Ti SUPER  nvidia  PCIe x4/x16  [side]  score 0.61
+  util █████████████████▌    88%               ▁▁▂▅▇▇▇▇▇▇▇▇▇▇▇▇▇
+  vram █████████████████▌    14.0/16.0 GiB     ▂▂▃▇▇▇▇▇▇▇▇▇▇▇▇▇▇
+
+Jobs (2)
+  pid 4211   nvidia@0000:01:00.0   render    12m03s  steam
+  pid 4302   nvidia@0000:05:00.0   llm        3m40s  llama-server -m model.gguf ...
+
+Log  ~/.local/state/gpubalance/gpubalance.log
+  14:01:58 INFO policy   chose nvidia@0000:05:00.0 for compute work (score 0.180; ...)
+q quit  p pause  +/- speed  v verbose  c clear alerts  ? help
+```
+
+What you see:
+
+- One block per card: model name (NVIDIA cards), driver, PCIe link, role and score.
+- Utilization and VRAM bars with a history graph that fills in from the right. Green is below 50%, yellow is up to 85%, red is above that.
+- A PCIe link in yellow means the card runs at fewer lanes than it supports.
+- Every program started through gpubalance, with its card and how long it has run.
+- Alerts: warnings collected into one line each with a count, so a missing `nvidia-smi` shows once as `x60` instead of filling the screen.
+- The live end of the log file, including launches from other terminals. Press `v` to include debug lines.
+
+Keys: `q` quit, `p` pause, `+` and `-` change the speed (0.2 s to 30 s), `v` verbose log, `c` clear alerts, `?` help.
+
+While `top` runs, it writes each warning to the log file once, and skips its own per-second debug lines, so the log stays useful. It falls back to plain ASCII bars on a terminal that isn't UTF-8.
+
 ## Logging and diagnostics
 
 Every run writes a detailed log to `~/.local/state/gpubalance/gpubalance.log`. Each file holds up to 1 MB, and the 3 previous files are kept. Every line carries a run ID, so you can pull out one launch even when several ran at once:
