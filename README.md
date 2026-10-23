@@ -1,6 +1,6 @@
 # Dual-GPU
 
-`gpubalance` spreads work across two (or more) GPUs on Linux and Windows, for example an NVIDIA card next to an AMD card, or two NVIDIA cards. Windows support covers less; see [Windows](#windows).
+`gpubalance` spreads work across two (or more) GPUs on Linux and Windows, for example an NVIDIA card next to an AMD card, or two NVIDIA cards. Linux is the main platform. Windows is supported second and covers less; see [Windows](#windows).
 
 ## What it does
 
