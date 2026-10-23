@@ -174,7 +174,8 @@ class ConfigTest(unittest.TestCase):
 class CliTest(Base):
     def run_cli(self, *args):
         cmd = [sys.executable, "-m", "gpubalance", "--sysfs", str(self.sys),
-               "--state", str(self.root / "s.json"), "--config", str(self.root / "none.toml"), *args]
+               "--state", str(self.root / "s.json"), "--config", str(self.root / "none.toml"),
+               "--log-file", str(self.root / "gpubalance.log"), *args]
         return subprocess.run(cmd, capture_output=True, text=True,
                               cwd=Path(__file__).resolve().parent.parent)
 

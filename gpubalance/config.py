@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+
+class ConfigError(ValueError):
+    pass
 
 
 def default_path() -> Path:
@@ -46,7 +53,11 @@ def load(path: Path | None = None) -> Config:
     try:
         data = tomllib.loads(path.read_text())
     except FileNotFoundError:
+        log.debug("no config at %s, using defaults", path)
         return Config()
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"{path}: {exc}") from exc
+    log.debug("config %s: %s", path, data)
     weights = data.get("weights", {})
     cfg = Config(
         w_util=float(weights.get("utilization", 1.0)),

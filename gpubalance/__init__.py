@@ -1,3 +1,8 @@
 """Launch-time workload balancing across mixed-vendor GPUs on Linux."""
 
-__version__ = "0.1.0"
+import logging
+
+__version__ = "0.2.0"
+
+# Library use stays quiet until the CLI (or the caller) sets up logging.
+logging.getLogger(__name__).addHandler(logging.NullHandler())

@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import shlex
 import sys
 from pathlib import Path
 
-from gpubalance import config, detect, launch, llm, metrics, policy
+from gpubalance import __version__, config, detect, diagnose, launch, llm, log, metrics, policy
 from gpubalance.state import State
+
+logger = logging.getLogger("gpubalance.cli")
 
 
 def _fmt_pct(value: float | None) -> str:
@@ -202,6 +205,28 @@ def cmd_side(args) -> int:
     return _cmd_role(args, "side")
 
 
+def cmd_diagnose(args) -> int:
+    report = diagnose.collect(
+        sysfs_root=Path(args.sysfs),
+        root=Path(args.root),
+        config_path=Path(args.config) if args.config else None,
+        state_path=Path(args.state) if args.state else None,
+        log_path=args.log_path,
+        llama_binary=args.llama,
+    )
+    text = diagnose.render_json(report) if args.json else diagnose.render_text(report)
+    if not args.no_redact:
+        text = diagnose.redact(text)
+    if args.output:
+        Path(args.output).write_text(text)
+        print(f"Report written to {args.output}")
+    else:
+        sys.stdout.write(text)
+    failed = [c for c in report["checks"] if c["level"] == "fail"]
+    logger.info("diagnose finished: %d check(s) failed", len(failed))
+    return 1 if failed else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gpubalance",
@@ -210,6 +235,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sysfs", default="/sys", help=argparse.SUPPRESS)
     parser.add_argument("--config", help="config file (default ~/.config/gpubalance/config.toml)")
     parser.add_argument("--state", help=argparse.SUPPRESS)
+    parser.add_argument("--root", default="/", help=argparse.SUPPRESS)
+    parser.add_argument("--version", action="version", version=f"gpubalance {__version__}")
+    parser.add_argument("--log-level", choices=log.LEVELS,
+                        default=os.environ.get("GPUBALANCE_LOG", "warning").lower(),
+                        help="what to print on screen (default warning, or $GPUBALANCE_LOG)")
+    parser.add_argument("--log-file", help=f"log file (default {log.default_path()})")
+    parser.add_argument("--no-log-file", action="store_true",
+                        help="do not write a log file (or set GPUBALANCE_LOG_FILE=off)")
+    parser.add_argument("--log-json", action="store_true",
+                        help="write the log file as one JSON object per line")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("list", help="show detected GPUs").set_defaults(func=cmd_list)
@@ -256,13 +291,41 @@ def build_parser() -> argparse.ArgumentParser:
     lm.add_argument("-v", "--verbose", action="store_true")
     lm.add_argument("command", nargs=argparse.REMAINDER)
     lm.set_defaults(func=cmd_llm)
+
+    dg = sub.add_parser("diagnose", help="collect a bug report: hardware, drivers, config, "
+                        "decisions and recent log lines")
+    dg.add_argument("--json", action="store_true", help="machine readable output")
+    dg.add_argument("-o", "--output", help="write the report to a file")
+    dg.add_argument("--llama", metavar="BINARY", help="also check what this llama.cpp binary sees")
+    dg.add_argument("--no-redact", action="store_true",
+                    help="keep user name, host name and home path in the report")
+    dg.set_defaults(func=cmd_diagnose)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    use_file = not args.no_log_file and os.environ.get("GPUBALANCE_LOG_FILE") != "off"
+    args.log_path = log.setup(args.log_level, Path(args.log_file) if args.log_file else None,
+                              use_file, args.log_json)
+    logger.info("gpubalance %s start: %s", __version__, shlex.join(sys.argv[1:] if argv is None else argv))
     try:
-        return args.func(args)
-    except policy.NoGpuError as exc:
-        print(f"gpubalance: {exc}", file=sys.stderr)
+        code = args.func(args)
+    except (policy.NoGpuError, config.ConfigError) as exc:
+        logger.error("%s", exc)
         return 1
+    except KeyboardInterrupt:
+        logger.info("interrupted")
+        return 130
+    except Exception:
+        # Full traceback goes to the log file; the screen gets a short pointer.
+        logger.debug("unexpected error", exc_info=True)
+        exc = sys.exc_info()[1]
+        where = f"Details are in {args.log_path} (run {log.RUN_ID})." if args.log_path else \
+            "Run again with --log-level debug for details."
+        print(f"gpubalance: unexpected error: {type(exc).__name__}: {exc}\n{where}\n"
+              "Run `gpubalance diagnose -o report.txt` and include the report in a bug report.",
+              file=sys.stderr)
+        return 70
+    logger.info("exit %s", code)
+    return code

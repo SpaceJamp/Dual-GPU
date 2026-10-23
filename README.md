@@ -136,6 +136,64 @@ Copy `examples/config.toml` to `~/.config/gpubalance/config.toml`. You can set:
 - `[pin]` rules that always send a program to one card.
 - Score weights.
 
+## Logging and diagnostics
+
+Every run writes a detailed log to `~/.local/state/gpubalance/gpubalance.log`. Each file holds up to 1 MB, and the 3 previous files are kept. Every line carries a run ID, so you can pull out one launch even when several ran at once:
+
+```
+2026-10-23 12:35:22,967 32f3a5f0 1942 DEBUG   gpubalance.detect: found card1: amd@0000:03:00.0 1002:744c driver=amdgpu ...
+grep 32f3a5f0 ~/.local/state/gpubalance/gpubalance.log
+```
+
+The log records each decision and the reason for it:
+
+- Detection: every card found or skipped, and why (not PCI, not a display controller, duplicate slot), plus every connector's status.
+- Load: raw `nvidia-smi` output and how long it took, each AMD busy sample, and the reason a card's load is unknown.
+- Scoring: each card's score broken into utilization, VRAM, jobs and capacity, and the final ranking.
+- Roles: which card got each role, and whether that came from your config or from where the monitors are plugged in.
+- LLM planning: the devices llama.cpp listed, which duplicate views were merged and why, the device to PCI slot map, and the memory left on each card.
+- Launch: the exact environment variables set, and the job recorded.
+
+Options:
+
+```
+gpubalance --log-level debug status     # show everything on screen too
+gpubalance --log-json run -- steam      # log file as JSON lines, for jq or scripts
+gpubalance --log-file /tmp/gb.log list  # log somewhere else
+gpubalance --no-log-file list           # no log file (or GPUBALANCE_LOG_FILE=off)
+GPUBALANCE_LOG=info gpubalance run -- steam
+```
+
+If gpubalance hits an unexpected error, the screen shows a one-line summary and the run ID, and the full traceback goes to the log file. The exit codes are 1 for a known problem (no GPU, bad config), 70 for an unexpected error and 130 for Ctrl+C.
+
+### Bug reports
+
+```
+gpubalance diagnose                      # read it on screen
+gpubalance diagnose -o report.txt        # save it to share
+gpubalance diagnose --json -o report.json
+gpubalance diagnose --llama llama-server # include what llama.cpp sees
+```
+
+The report collects:
+
+- System: kernel, distro, session type, loaded modules and the NVIDIA modeset setting.
+- Each card: PCIe link width and speed, connectors, AMD sysfs values, and access to the render node.
+- Tools: `nvidia-smi` output, installed tools, and whether the Vulkan device-select layer is installed.
+- Setup: environment variables already set in your shell, the config file, running jobs, roles and scores.
+- The last 40 log lines.
+
+It ends with checks marked PASS, INFO, WARN or FAIL, each with a fix. Among them:
+
+- A card running at fewer PCIe lanes than it supports, such as x4 in an x16 slot.
+- The nouveau driver on an NVIDIA card, a broken `nvidia-smi`, or nvidia-drm modeset turned off.
+- No permission to open a render node (fix: join the render and video groups).
+- A two-NVIDIA setup where OpenGL can't be steered.
+- Leftover variables like `DRI_PRIME` in your shell.
+- A llama.cpp build that can't see one of your cards.
+
+Your user name, host name and home path are hidden in the report. Pass `--no-redact` to keep them. `diagnose` exits with 1 if any check fails.
+
 ## Known limits
 
 - The NVIDIA proprietary driver is required for NVIDIA load data. With `nouveau`, the card reads as 50% busy.

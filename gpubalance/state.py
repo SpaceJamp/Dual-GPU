@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import fcntl
 import json
+import logging
 import os
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 
 def default_path() -> Path:
@@ -57,15 +60,24 @@ class State:
     def _load(self) -> list[Assignment]:
         try:
             raw = json.loads(self.path.read_text())
-        except (OSError, ValueError):
+        except FileNotFoundError:
+            return []
+        except (OSError, ValueError) as exc:
+            log.warning("job file %s unreadable, starting empty: %s", self.path, exc)
             return []
         items = []
         for item in raw:
             try:
                 items.append(Assignment(**item))
             except TypeError:
-                continue
-        return [a for a in items if _alive(a.pid)]
+                log.warning("dropping malformed job entry: %r", item)
+        alive = []
+        for a in items:
+            if _alive(a.pid):
+                alive.append(a)
+            else:
+                log.debug("job pid %d on %s has exited (%s)", a.pid, a.gpu, a.command)
+        return alive
 
     def _save(self, items: list[Assignment]) -> None:
         tmp = self.path.with_suffix(".tmp")
@@ -83,6 +95,7 @@ class State:
             items = [a for a in self._load() if a.pid != pid]
             items.append(Assignment(pid, gpu, kind, command, time.time()))
             self._save(items)
+        log.info("recorded pid %d on %s as %s: %s", pid, gpu, kind, command)
 
     def counts(self) -> dict[str, int]:
         counts: dict[str, int] = {}
