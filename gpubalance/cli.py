@@ -8,7 +8,7 @@ import shlex
 import sys
 from pathlib import Path
 
-from gpubalance import config, detect, launch, metrics, policy
+from gpubalance import config, detect, launch, llm, metrics, policy
 from gpubalance.state import State
 
 
@@ -143,6 +143,48 @@ def _cmd_role(args, role: str) -> int:
     return _launch(args, state, gpu, role, command, env, f"{role} card")
 
 
+def cmd_llm(args) -> int:
+    command = _command(args)
+    if not command:
+        return 2
+    gpus, cfg, state = _context(args)
+    skip: tuple[str, ...] = ()
+    if args.leave_game_card:
+        render = policy.assign_roles(gpus, cfg)["render"]
+        # llama.cpp names devices by model, not PCI slot, so we can only
+        # tell cards apart by vendor.
+        if sum(g.vendor == render.vendor for g in gpus) > 1:
+            print("gpubalance: both cards share a vendor; cannot keep the "
+                  "game card free", file=sys.stderr)
+            return 1
+        skip = (render.vendor,)
+    try:
+        devices = llm.list_devices(command[0])
+        if not devices:
+            raise llm.LlmError(f"{command[0]} --list-devices found no GPUs; "
+                               "is this a llama.cpp build with GPU support?")
+        chosen, shares = llm.plan(devices, args.mode, args.reserve, skip)
+    except llm.LlmError as exc:
+        print(f"gpubalance: {exc}", file=sys.stderr)
+        return 1
+    full = llm.build_args(command, chosen, shares)
+    if args.verbose or args.dry_run:
+        for dev, mib in zip(chosen, shares):
+            print(f"gpubalance: {dev.name} {dev.description}: {mib} MiB for the model",
+                  file=sys.stderr)
+        print(f"  {shlex.join(full)}", file=sys.stderr)
+    if args.dry_run:
+        return 0
+    main = chosen[shares.index(max(shares))]
+    slot = next((g.pci_slot for g in gpus if g.vendor == main.vendor), main.name)
+    state.add(os.getpid(), slot, "llm", shlex.join(full))
+    try:
+        os.execvp(full[0], full)
+    except OSError as exc:
+        print(f"gpubalance: cannot run {full[0]}: {exc}", file=sys.stderr)
+        return 127
+
+
 def cmd_game(args) -> int:
     return _cmd_role(args, "render")
 
@@ -192,6 +234,19 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("-v", "--verbose", action="store_true")
         p.add_argument("command", nargs=argparse.REMAINDER)
         p.set_defaults(func=func)
+
+    lm = sub.add_parser("llm", help="run a llama.cpp program with the model spread over your cards")
+    lm.add_argument("-m", "--mode", choices=("split", "single"), default="split",
+                    help="split: share the model across cards by free VRAM; "
+                         "single: put it all on the card with the most free VRAM")
+    lm.add_argument("-r", "--reserve", type=int, default=1024, metavar="MIB",
+                    help="VRAM to leave free on each card (default 1024)")
+    lm.add_argument("--leave-game-card", action="store_true",
+                    help="keep the model off the render card so you can game at the same time")
+    lm.add_argument("-n", "--dry-run", action="store_true", help="show the plan, do not run")
+    lm.add_argument("-v", "--verbose", action="store_true")
+    lm.add_argument("command", nargs=argparse.REMAINDER)
+    lm.set_defaults(func=cmd_llm)
     return parser
 
 

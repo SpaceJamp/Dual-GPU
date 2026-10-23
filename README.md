@@ -39,6 +39,37 @@ Things to know:
 - Copying each frame costs a little frame rate and adds a little latency. The cost grows with resolution and frame rate, and it is worse if the render card sits in a PCIe x4 slot.
 - If a game ignores the variables and still runs on the display card, check `gpubalance game -v -- <game>` to see what was set, and look for a GPU choice in the game's own settings.
 
+## Local language models
+
+Unlike games, one llama.cpp model can run on both cards at once. llama.cpp puts some of the model's layers on each card, even across vendors. `gpubalance llm` sets that up from the free VRAM on each card.
+
+```
+gpubalance llm -- llama-server -m model.gguf             # split over both cards
+gpubalance llm -m single -- llama-server -m model.gguf   # all on the emptiest card
+gpubalance llm --leave-game-card -- llama-server -m model.gguf
+gpubalance llm -n -- llama-server -m model.gguf          # dry run: show the plan
+```
+
+What happens:
+
+1. It runs `<program> --list-devices` to see the devices llama.cpp found.
+2. If a card shows up twice (for example `CUDA0` and `Vulkan0` for the same NVIDIA card), it keeps the faster backend: CUDA for NVIDIA, ROCm for AMD, SYCL for Intel, Vulkan otherwise.
+3. It leaves `--reserve` MiB free on each card (1024 by default) and gives the rest to the model.
+4. It adds `--device` and `--tensor-split` to your command. If you already pass either flag, yours is used.
+
+`--leave-game-card` keeps the model off the render card, so you can game and run a model at the same time.
+
+Which llama.cpp build to use:
+
+- Vulkan only: the simplest way to cover NVIDIA and AMD in one program. Speed is good on both.
+- CUDA plus Vulkan (`-DGGML_CUDA=ON -DGGML_VULKAN=ON`): NVIDIA runs through CUDA, AMD through Vulkan. Usually faster on the NVIDIA side.
+
+Things to know:
+
+- Splitting by layers lets you load a model bigger than either card. It does not make generation faster than the faster card alone, because the cards take turns.
+- The slower card sets the pace for its share. If one card is much slower, `-m single` on the fast card can win for models that fit.
+- Ollama and LM Studio manage GPUs themselves. Use `gpubalance run -k compute -- ollama serve` to pick a card for Ollama.
+
 ## What it does not do
 
 It balances per program, at launch. It cannot split one game frame or one CUDA kernel across an NVIDIA and an AMD card. Linux has no driver path for that across vendors. If a program needs two GPUs at once, it has to support that itself (Blender Cycles, some ML frameworks, `llama.cpp` with Vulkan).
