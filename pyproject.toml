@@ -4,12 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gpubalance"
-version = "0.3.0"
-description = "Launch-time workload balancing for Linux machines with GPUs from different vendors"
+version = "0.4.0"
+description = "Workload balancing for machines with two GPUs, on Linux and Windows"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-classifiers = ["Operating System :: POSIX :: Linux"]
+classifiers = [
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+]
+# Windows Python has no curses module; gpubalance top needs this one.
+dependencies = ['windows-curses>=2.3; sys_platform == "win32"']
 
 [project.scripts]
 gpubalance = "gpubalance.cli:main"

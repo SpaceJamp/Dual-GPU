@@ -13,11 +13,13 @@ from __future__ import annotations
 import json
 import logging
 import logging.handlers
-import os
+import sys
 import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
+
+from gpubalance import system
 
 ROOT = "gpubalance"
 LEVELS = ("debug", "info", "warning", "error")
@@ -29,8 +31,7 @@ _TEXT_FORMAT = "%(asctime)s %(run_id)s %(process)d %(levelname)-7s %(name)s: %(m
 
 
 def default_path() -> Path:
-    base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-    return Path(base) / "gpubalance" / "gpubalance.log"
+    return system.state_dir() / "gpubalance.log"
 
 
 class _RunIdFilter(logging.Filter):
@@ -89,8 +90,9 @@ def setup(
         path = file_path or default_path()
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            handler = logging.handlers.RotatingFileHandler(
-                path, maxBytes=_FILE_BYTES, backupCount=_FILE_BACKUPS, encoding="utf-8")
+            cls = ShortHoldHandler if sys.platform == "win32" else logging.handlers.RotatingFileHandler
+            handler = cls(path, maxBytes=_FILE_BYTES, backupCount=_FILE_BACKUPS,
+                          encoding="utf-8", delay=True)
         except OSError as exc:
             logger.warning("cannot write log file %s: %s", path, exc)
             path = None
@@ -102,6 +104,22 @@ def setup(
     for handler in logger.handlers:
         handler.addFilter(_RunIdFilter())
     return path
+
+
+class ShortHoldHandler(logging.handlers.RotatingFileHandler):
+    """Open the log file only while writing a line.
+
+    Windows cannot rename a file another process holds open, and rotation
+    is a rename. gpubalance stays running while a launched game runs, and
+    top runs for hours, so a handler that kept the file open would break
+    rotation for every other gpubalance process.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        super().emit(record)
+        if self.stream:
+            self.stream.close()
+            self.stream = None
 
 
 @contextmanager

@@ -1,12 +1,14 @@
-"""User configuration from ~/.config/gpubalance/config.toml."""
+"""User configuration: ~/.config/gpubalance/config.toml on Linux,
+%APPDATA%\\gpubalance\\config.toml on Windows."""
 
 from __future__ import annotations
 
 import logging
-import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from gpubalance import system
 
 log = logging.getLogger(__name__)
 
@@ -16,8 +18,7 @@ class ConfigError(ValueError):
 
 
 def default_path() -> Path:
-    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-    return Path(base) / "gpubalance" / "config.toml"
+    return system.config_dir() / "config.toml"
 
 
 @dataclass

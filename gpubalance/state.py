@@ -7,21 +7,20 @@ onto it. Entries for processes that have exited are dropped on every read.
 
 from __future__ import annotations
 
-import fcntl
 import json
 import logging
-import os
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from gpubalance import system
+
 log = logging.getLogger(__name__)
 
 
 def default_path() -> Path:
-    base = os.environ.get("XDG_RUNTIME_DIR") or f"/tmp/gpubalance-{os.getuid()}"
-    return Path(base) / "gpubalance" / "assignments.json"
+    return system.runtime_dir() / "assignments.json"
 
 
 @dataclass
@@ -33,29 +32,14 @@ class Assignment:
     started: float
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
 class State:
     def __init__(self, path: Path | None = None):
         self.path = path or default_path()
 
     @contextmanager
     def _locked(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.path.with_suffix(".lock"), "w") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
+        with system.file_lock(self.path.with_suffix(".lock")):
+            yield
 
     def _load(self) -> list[Assignment]:
         try:
@@ -73,7 +57,7 @@ class State:
                 log.warning("dropping malformed job entry: %r", item)
         alive = []
         for a in items:
-            if _alive(a.pid):
+            if system.pid_alive(a.pid):
                 alive.append(a)
             else:
                 log.debug("job pid %d on %s has exited (%s)", a.pid, a.gpu, a.command)

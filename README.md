@@ -1,17 +1,17 @@
 # Dual-GPU
 
-`gpubalance` spreads work across two (or more) GPUs from different vendors on Linux, for example an NVIDIA card next to an AMD card.
+`gpubalance` spreads work across two (or more) GPUs on Linux and Windows, for example an NVIDIA card next to an AMD card, or two NVIDIA cards. Windows support covers less; see [Windows](#windows).
 
 ## What it does
 
 Each time you start a program through `gpubalance run`, it:
 
-1. Finds every GPU through `/sys/class/drm`, no vendor tools needed.
+1. Finds every GPU through `/sys/class/drm` on Linux, no vendor tools needed (Windows: `nvidia-smi` and PowerShell).
 2. Reads current load: AMD from sysfs (`gpu_busy_percent`, `mem_info_vram_*`), NVIDIA from `nvidia-smi`.
 3. Scores each card. Lower wins.
    `score = (1.0 * util + 0.5 * vram_used + 0.3 * running_jobs) / capacity`
 4. Sets the environment variables that point OpenGL, Vulkan, CUDA, ROCm or oneAPI at that card.
-5. Replaces itself with your program and records the PID, so the next launch knows that card already has a job.
+5. Replaces itself with your program and records the PID, so the next launch knows that card already has a job. On Windows it starts the program and waits instead.
 
 ## Game mode: one card renders, one card shows
 
@@ -99,11 +99,43 @@ It balances per program, at launch. It cannot split one game frame or one CUDA k
 
 ## Install
 
-Needs Python 3.11 or newer. No other dependencies.
+Needs Python 3.11 or newer. On Linux there are no other dependencies. On Windows, pip also installs `windows-curses` for `gpubalance top`.
 
 ```
 pip install --user .
 ```
+
+## Windows
+
+Install Python 3.11 or newer from python.org, then in PowerShell:
+
+```
+git clone https://github.com/SpaceJamp/Dual-GPU
+cd Dual-GPU
+py -m pip install --user .
+gpubalance list
+```
+
+If `gpubalance` is not found, use `py -m gpubalance list`, or add the Scripts folder pip names to your PATH.
+
+What works on Windows:
+
+| Feature | Windows |
+|---------|---------|
+| `list`, `status`, `roles` | Yes. NVIDIA cards come from `nvidia-smi`; other cards from Windows' adapter list. |
+| Load and VRAM | NVIDIA cards only. Other cards show as unknown and score as half busy. |
+| `run -k compute` | Yes. Sets `CUDA_VISIBLE_DEVICES` (by UUID) or `HIP_VISIBLE_DEVICES`. |
+| `llm` | Yes, including `--leave-game-card` with two NVIDIA cards and a CUDA build. |
+| `top`, `diagnose`, logging | Yes. `top` reads the PCIe link width from `nvidia-smi`. |
+| `game`, `side`, `run -k graphics` | No. They start the program and tell you to set its GPU in Settings > System > Display > Graphics. |
+
+Why graphics steering is missing: on Linux, environment variables decide which card renders. Windows has no such variables. Its only per-app control is the Graphics settings page, and the registry format for picking one specific card (when both cards are high performance) is not documented. gpubalance does not write guesses into your registry.
+
+Other differences:
+
+- Windows has no `exec`, so gpubalance starts the program, waits for it, records the program's own PID, and returns its exit code.
+- Files live in `%APPDATA%\gpubalance\config.toml` (config) and `%LOCALAPPDATA%\gpubalance\` (log and job list).
+- The monitor count is a heuristic: a card counts as driving a monitor when Windows reports a current resolution for it.
 
 ## Use
 
