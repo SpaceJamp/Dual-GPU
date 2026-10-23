@@ -34,6 +34,12 @@ def make_mixed(root: Path, amd_busy: int = 10) -> Path:
         "mem_info_vram_total": str(16 * 2**30),
         "unique_id": "abcdef0123456789",
     })
+    # hwmon: 58 C edge temperature, 120 W of a 303 W cap (micro units).
+    hwmon = root / "devices" / "0000:03:00.0" / "hwmon" / "hwmon3"
+    hwmon.mkdir(parents=True)
+    (hwmon / "temp1_input").write_text("58000\n")
+    (hwmon / "power1_input").write_text("120000000\n")
+    (hwmon / "power1_cap").write_text("303000000\n")
     # Connector entries and non-PCI framebuffers must be ignored.
     (root / "class" / "drm" / "card1-DP-1").mkdir()
     (root / "class" / "drm" / "card2").mkdir()
@@ -41,7 +47,9 @@ def make_mixed(root: Path, amd_busy: int = 10) -> Path:
 
 
 def nvidia_smi(util: int = 80, used_mib: int = 12000, total_mib: int = 24564,
-               name: str = "NVIDIA GeForce RTX 4090"):
+               name: str = "NVIDIA GeForce RTX 4090", temp: str = "64", power: str = "245.50",
+               limit: str = "450.00"):
     def runner(cmd):
-        return f"00000000:01:00.0, GPU-1111-2222, {util}, {used_mib}, {total_mib}, {name}\n"
+        return (f"00000000:01:00.0, GPU-1111-2222, {util}, {used_mib}, {total_mib}, "
+                f"{temp}, {power}, {limit}, {name}\n")
     return runner

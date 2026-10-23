@@ -149,9 +149,11 @@ gpubalance top  14:02:11  every 1.0s
 nvidia@0000:01:00.0  NVIDIA GeForce RTX 5080  nvidia  PCIe x16/x16  [render, display]  score 0.42
   util ██████████████▍       72%               ▁▂▃▅▇▇▆▅▅▆▇▇▇▆▅▆▇
   vram █████████████▉        11.2/16.0 GiB     ▅▅▅▆▆▆▆▆▆▆▆▆▆▆▆▆▆
+  powr ████████████████▋     301/360 W 78°C    ▂▃▅▇▇▇▇▇▇▇▇▇▇▇▇▇▇
 nvidia@0000:05:00.0  NVIDIA GeForce RTX 4070 Ti SUPER  nvidia  PCIe x4/x16  [side]  score 0.61
   util █████████████████▌    88%               ▁▁▂▅▇▇▇▇▇▇▇▇▇▇▇▇▇
   vram █████████████████▌    14.0/16.0 GiB     ▂▂▃▇▇▇▇▇▇▇▇▇▇▇▇▇▇
+  powr █████████████▉        195/285 W 66°C    ▁▁▂▆▇▇▇▇▇▇▇▇▇▇▇▇▇
 
 Jobs (2)
   pid 4211   nvidia@0000:01:00.0   render    12m03s  steam
@@ -166,6 +168,7 @@ What you see:
 
 - One block per card: model name (NVIDIA cards), driver, PCIe link, role and score.
 - Utilization and VRAM bars with a history graph that fills in from the right. Green is below 50%, yellow is up to 85%, red is above that.
+- Power draw against the card's power limit, with a history graph, and the temperature. Temperature is green below 75°C, yellow up to 85°C and red from 85°C, where most cards start to throttle. NVIDIA values come from `nvidia-smi`; AMD values come from the card's `hwmon` sensors. The line is hidden for cards that report neither.
 - A PCIe link in yellow means the card runs at fewer lanes than it supports.
 - Every program started through gpubalance, with its card and how long it has run.
 - Alerts: warnings collected into one line each with a count, so a missing `nvidia-smi` shows once as `x60` instead of filling the screen.
@@ -225,6 +228,7 @@ The report collects:
 It ends with checks marked PASS, INFO, WARN or FAIL, each with a fix. Among them:
 
 - A card running at fewer PCIe lanes than it supports, such as x4 in an x16 slot.
+- A card at 85°C or hotter (warn), or drawing 98% or more of its power limit (info).
 - The nouveau driver on an NVIDIA card, a broken `nvidia-smi`, or nvidia-drm modeset turned off.
 - No permission to open a render node (fix: join the render and video groups).
 - A two-NVIDIA setup where OpenGL can't be steered.

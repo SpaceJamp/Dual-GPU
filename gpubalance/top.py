@@ -161,6 +161,7 @@ class History:
     def __init__(self, keep: int = _HISTORY):
         self.util: dict[str, deque] = {}
         self.vram: dict[str, deque] = {}
+        self.power: dict[str, deque] = {}
         self.keep = keep
 
     def add(self, loads: dict[str, metrics.Load]) -> None:
@@ -168,6 +169,7 @@ class History:
             self.util.setdefault(slot, deque(maxlen=self.keep)).append(
                 None if load.util is None else load.util / 100)
             self.vram.setdefault(slot, deque(maxlen=self.keep)).append(load.vram_frac)
+            self.power.setdefault(slot, deque(maxlen=self.keep)).append(load.power_frac)
 
 
 @dataclass
@@ -262,6 +264,14 @@ def _elapsed(seconds: float) -> str:
     return f"{h}h{m:02d}m" if h else f"{m}m{s:02d}s"
 
 
+def temp_style(temp: float | None) -> str:
+    if temp is None:
+        return "dim"
+    if temp < metrics.TEMP_WARN_C:
+        return "ok"
+    return "warn" if temp < metrics.TEMP_HOT_C else "bad"
+
+
 def _gib(value: int | None) -> str:
     return "?" if value is None else f"{value / 2**30:.1f}"
 
@@ -298,7 +308,7 @@ def _gpu_lines(view: View, gpu: detect.Gpu, width: int) -> list[Line]:
     util_txt = "unknown" if util is None else f"{load.util:.0f}%"
     vram = load.vram_frac
     vram_txt = f"{_gib(load.vram_used)}/{_gib(load.vram_total)} GiB"
-    return [
+    lines = [
         head,
         [("  util ", "dim"), (bar(util, ascii=view.ascii), _style_for(util)),
          (f"  {util_txt:<16}", ""),
@@ -307,6 +317,22 @@ def _gpu_lines(view: View, gpu: detect.Gpu, width: int) -> list[Line]:
          (f"  {vram_txt:<16}", ""),
          (sparkline(view.history.vram.get(slot, ()), spark_w, view.ascii), _style_for(vram))],
     ]
+    if load.power_w is not None or load.temp_c is not None:
+        # The bar is draw against the card's power limit.
+        power = load.power_frac
+        if load.power_w is None:
+            power_txt = "?"
+        elif load.power_limit_w:
+            power_txt = f"{load.power_w:.0f}/{load.power_limit_w:.0f} W"
+        else:
+            power_txt = f"{load.power_w:.0f} W"
+        degree = "C" if view.ascii else "°C"
+        temp_txt = "" if load.temp_c is None else f"{load.temp_c:.0f}{degree}"
+        lines.append(
+            [("  powr ", "dim"), (bar(power, ascii=view.ascii), _style_for(power)),
+             (f"  {power_txt:<10}", ""), (f"{temp_txt:<6}", temp_style(load.temp_c)),
+             (sparkline(view.history.power.get(slot, ()), spark_w, view.ascii), _style_for(power))])
+    return lines
 
 
 def render(view: View, width: int, height: int) -> list[Line]:

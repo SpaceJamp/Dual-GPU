@@ -233,6 +233,16 @@ def run_checks(r: dict[str, Any]) -> list[Check]:
         elif g["render_node"] is None:
             out.append(Check("warn", "no-render-node", f"{label} has no render node.",
                              "The driver may not have finished loading. Check dmesg for errors."))
+        load = r["loads"].get(g["pci_slot"], {})
+        temp, power, limit = load.get("temp_c"), load.get("power_w"), load.get("power_limit_w")
+        if temp is not None and temp >= metrics.TEMP_HOT_C:
+            out.append(Check("warn", "hot", f"{label} is at {temp:.0f} C.",
+                             "Cards throttle around here. Check case airflow, fan curves and "
+                             "the gap between the two cards."))
+        if power is not None and limit and power >= 0.98 * limit:
+            out.append(Check("info", "power-limit",
+                             f"{label} draws {power:.0f} W of its {limit:.0f} W limit.",
+                             "It is power limited right now, which caps its clocks."))
         amd = g.get("amdgpu")
         if amd and amd.get("gpu_busy_percent") is None:
             out.append(Check("warn", "amd-busy", f"{label} has no gpu_busy_percent file.",
@@ -359,7 +369,13 @@ def render_text(r: dict[str, Any]) -> str:
         vram = "unknown"
         if load.get("vram_used") is not None and load.get("vram_total"):
             vram = f"{load['vram_used'] / 2**30:.1f}/{load['vram_total'] / 2**30:.1f} GiB"
-        lines.append(f"    load: util={util} vram={vram} source={load.get('source')}")
+        temp = "unknown" if load.get("temp_c") is None else f"{load['temp_c']:.0f} C"
+        power = "unknown"
+        if load.get("power_w") is not None:
+            power = f"{load['power_w']:.0f}"
+            power += f"/{load['power_limit_w']:.0f} W" if load.get("power_limit_w") else " W"
+        lines.append(f"    load: util={util} vram={vram} temp={temp} power={power} "
+                     f"source={load.get('source')}")
     lines += ["", "Modules: " + ", ".join(f"{k}={v}" for k, v in r["modules"].items()),
               "Tools: " + ", ".join(f"{k}={'yes' if v else 'no'}" for k, v in r["tools"].items())]
     if r["scores"]:

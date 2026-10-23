@@ -49,13 +49,18 @@ def cmd_status(args) -> int:
     loads = metrics.sample(gpus, samples=cfg.samples)
     jobs = state.counts()
     ranked = {s.gpu.pci_slot: s for s in policy.score_all(gpus, loads, jobs, cfg)}
-    print(f"{'GPU':<22} {'util':>5} {'VRAM GiB':>13} {'jobs':>4} {'score':>6}  source")
+    print(f"{'GPU':<22} {'util':>5} {'VRAM GiB':>13} {'temp':>5} {'power W':>9} "
+          f"{'jobs':>4} {'score':>6}  source")
     for g in gpus:
         load = loads[g.pci_slot]
         s = ranked.get(g.pci_slot)
         vram = f"{_fmt_gib(load.vram_used)}/{_fmt_gib(load.vram_total)}"
+        temp = "  n/a" if load.temp_c is None else f"{load.temp_c:3.0f} C"
+        power = "n/a" if load.power_w is None else f"{load.power_w:.0f}"
+        if load.power_w is not None and load.power_limit_w:
+            power += f"/{load.power_limit_w:.0f}"
         score = f"{s.score:6.2f}" if s else "     -"
-        print(f"{g.label:<22} {_fmt_pct(load.util)} {vram:>13} "
+        print(f"{g.label:<22} {_fmt_pct(load.util)} {vram:>13} {temp:>5} {power:>9} "
               f"{jobs.get(g.pci_slot, 0):>4} {score}  {load.source}")
     active = state.active()
     if active:
