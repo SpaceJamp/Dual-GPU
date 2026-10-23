@@ -43,5 +43,5 @@ def make_mixed(root: Path, amd_busy: int = 10) -> Path:
 def nvidia_smi(util: int = 80, used_mib: int = 12000, total_mib: int = 24564,
                name: str = "NVIDIA GeForce RTX 4090"):
     def runner(cmd):
-        return f"00000000:01:00.0, GPU-1111-2222, {util}, {used_mib}, {total_mib}, 16, 16, {name}\n"
+        return f"00000000:01:00.0, GPU-1111-2222, {util}, {used_mib}, {total_mib}, {name}\n"
     return runner

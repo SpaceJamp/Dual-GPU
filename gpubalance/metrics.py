@@ -24,8 +24,7 @@ Runner = Callable[[list[str]], str]
 _NVIDIA_QUERY = [
     "nvidia-smi",
     # name goes last so a comma inside it cannot shift the other fields.
-    "--query-gpu=pci.bus_id,uuid,utilization.gpu,memory.used,memory.total,"
-    "pcie.link.width.current,pcie.link.width.max,name",
+    "--query-gpu=pci.bus_id,uuid,utilization.gpu,memory.used,memory.total,name",
     "--format=csv,noheader,nounits",
 ]
 _MIB = 1024 * 1024
@@ -38,8 +37,6 @@ class Load:
     vram_total: int | None = None
     uuid: str | None = None
     name: str | None = None
-    link_width: int | None = None
-    link_width_max: int | None = None
     source: str = "none"
 
     @property
@@ -91,12 +88,11 @@ def read_nvidia(runner: Runner = _run) -> dict[str, Load]:
     log.debug("nvidia-smi output: %r", out)
     loads = {}
     for line in out.strip().splitlines():
-        parts = [p.strip() for p in line.split(",", 7)]
-        if len(parts) != 8:
-            log.warning("nvidia-smi line has %d fields, expected 8: %r", len(parts), line)
+        parts = [p.strip() for p in line.split(",", 5)]
+        if len(parts) != 6:
+            log.warning("nvidia-smi line has %d fields, expected 6: %r", len(parts), line)
             continue
-        bus, uuid, util, used, total, width, width_max, name = parts
-        width_n, width_max_n = _number(width), _number(width_max)
+        bus, uuid, util, used, total, name = parts
         used_n, total_n = _number(used), _number(total)
         try:
             slot = _normalize_bus_id(bus)
@@ -109,8 +105,6 @@ def read_nvidia(runner: Runner = _run) -> dict[str, Load]:
             vram_total=int(total_n * _MIB) if total_n is not None else None,
             uuid=uuid,
             name=name,
-            link_width=int(width_n) if width_n is not None else None,
-            link_width_max=int(width_max_n) if width_max_n is not None else None,
             source="nvidia-smi",
         )
     return loads

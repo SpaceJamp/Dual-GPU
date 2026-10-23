@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 KINDS = ("auto", "graphics", "compute")
 
 # Drivers that ship a usable compute stack (CUDA, ROCm/HIP, oneAPI).
-_COMPUTE_DRIVERS = {"nvidia", "amdgpu", "i915", "xe", "amd-windows", "intel-windows"}
+_COMPUTE_DRIVERS = {"nvidia", "amdgpu", "i915", "xe"}
 
 
 @dataclass

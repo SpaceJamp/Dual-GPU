@@ -197,15 +197,6 @@ def _read(path: Path) -> str | None:
         return None
 
 
-def _link(gpu: detect.Gpu, load: metrics.Load | None) -> tuple[str | None, str | None]:
-    if gpu.sysfs:
-        return _read(gpu.sysfs / "current_link_width"), _read(gpu.sysfs / "max_link_width")
-    # Windows has no sysfs; nvidia-smi reports the link for NVIDIA cards.
-    if load and load.link_width is not None:
-        return str(load.link_width), str(load.link_width_max or load.link_width)
-    return None, None
-
-
 def role_map(gpus: list[detect.Gpu], cfg: config.Config) -> dict[str, str]:
     try:
         roles = policy.assign_roles(gpus, cfg)
@@ -228,7 +219,8 @@ def sample(view: View, cfg: config.Config, state: State, runner=None) -> None:
         counts[job.gpu] = counts.get(job.gpu, 0) + 1
     view.scores = {s.gpu.pci_slot: s.score
                    for s in policy.score_all(view.gpus, view.loads, counts, cfg)}
-    view.links = {g.pci_slot: _link(g, view.loads.get(g.pci_slot)) for g in view.gpus}
+    view.links = {g.pci_slot: (_read(g.sysfs / "current_link_width"),
+                               _read(g.sysfs / "max_link_width")) for g in view.gpus}
     view.now = time.time()
 
 
@@ -288,7 +280,7 @@ def fit(line: Line, width: int) -> Line:
 def _gpu_lines(view: View, gpu: detect.Gpu, width: int) -> list[Line]:
     slot = gpu.pci_slot
     load = view.loads.get(slot, metrics.Load())
-    name = load.name or gpu.name or gpu.pci_id
+    name = load.name or gpu.pci_id
     cur, top = view.links.get(slot, (None, None))
     link: Segment = ("", "")
     if cur and top:

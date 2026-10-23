@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from gpubalance import __version__, config, detect, llm, log, metrics, policy, system
+from gpubalance import __version__, config, detect, llm, log, metrics, policy
 from gpubalance.state import State
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,6 @@ STEERING_VARS = (
 )
 SESSION_VARS = ("XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "WAYLAND_DISPLAY", "DISPLAY")
 TOOLS = ("nvidia-smi", "vulkaninfo", "glxinfo", "rocminfo", "llama-server", "llama-cli")
-WINDOWS_TOOLS = ("nvidia-smi", "powershell", "vulkaninfo", "llama-server", "llama-cli")
 _DEVICE_SELECT_LAYERS = (
     "usr/share/vulkan/implicit_layer.d",
     "etc/vulkan/implicit_layer.d",
@@ -74,20 +73,6 @@ def _os_release(root: Path) -> dict[str, str]:
     return fields
 
 
-def _windows_gpu_facts(gpu: detect.Gpu, load: metrics.Load) -> dict[str, Any]:
-    # No sysfs: the link comes from nvidia-smi, monitors from Windows.
-    width = None if load.link_width is None else str(load.link_width)
-    width_max = None if load.link_width_max is None else str(load.link_width_max)
-    return {
-        "card": gpu.card, "pci_slot": gpu.pci_slot, "vendor": gpu.vendor,
-        "pci_id": gpu.pci_id, "driver": gpu.driver, "name": gpu.name,
-        "render_node": None, "monitors": gpu.displays,
-        "link": {"current_link_speed": None, "current_link_width": width,
-                 "max_link_speed": None, "max_link_width": width_max},
-        "connectors": {},
-    }
-
-
 def _gpu_facts(gpu: detect.Gpu, drm: Path, root: Path) -> dict[str, Any]:
     facts: dict[str, Any] = {
         "card": gpu.card, "pci_slot": gpu.pci_slot, "vendor": gpu.vendor,
@@ -108,18 +93,14 @@ def _gpu_facts(gpu: detect.Gpu, drm: Path, root: Path) -> dict[str, Any]:
     return facts
 
 
-def _nvidia_smi(runner: metrics.Runner | None = None) -> dict[str, Any]:
-    cmd = ["nvidia-smi", "--query-gpu=pci.bus_id,name,driver_version,pcie.link.gen.current,"
-           "pcie.link.width.current,utilization.gpu,memory.used,memory.total", "--format=csv"]
-    if runner:
-        try:
-            return {"exit": 0, "stdout": runner(cmd), "stderr": ""}
-        except (OSError, subprocess.SubprocessError) as exc:
-            return {"error": str(exc)}
+def _nvidia_smi() -> dict[str, Any]:
     if not shutil.which("nvidia-smi"):
         return {"error": "not installed"}
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        proc = subprocess.run(
+            ["nvidia-smi", "--query-gpu=pci.bus_id,name,driver_version,pcie.link.gen.current,"
+             "pcie.link.width.current,utilization.gpu,memory.used,memory.total",
+             "--format=csv"], capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError) as exc:
         return {"error": str(exc)}
     return {"exit": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
@@ -150,43 +131,35 @@ def collect(
 ) -> dict[str, Any]:
     """Gather facts. root is the filesystem root, swapped out in tests."""
     logger.info("collecting diagnostics")
-    win = system.WINDOWS
     report: dict[str, Any] = {
         "meta": {
             "gpubalance": __version__, "run_id": log.RUN_ID,
             "time": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "os": "windows" if win else "linux",
             "python": sys.version.split()[0], "kernel": platform.release(),
             "machine": platform.machine(),
-            "distro": platform.platform() if win
-            else _os_release(root).get("PRETTY_NAME", "unknown"),
+            "distro": _os_release(root).get("PRETTY_NAME", "unknown"),
         },
         "session": {k: os.environ.get(k) for k in SESSION_VARS},
         "steering_env": {k: os.environ[k] for k in STEERING_VARS if k in os.environ},
-        "modules": {} if win else {
+        "modules": {
             "nvidia": _read(sysfs_root / "module/nvidia/version"),
             "nvidia_drm_modeset": _read(sysfs_root / "module/nvidia_drm/parameters/modeset"),
             "nouveau_loaded": (sysfs_root / "module/nouveau").exists(),
             "amdgpu_loaded": (sysfs_root / "module/amdgpu").exists(),
         },
-        "tools": {t: shutil.which(t) for t in (WINDOWS_TOOLS if win else TOOLS)},
-        "vulkan_device_select_layer": [] if win else [
+        "tools": {t: shutil.which(t) for t in TOOLS},
+        "vulkan_device_select_layer": [
             str(p) for d in _DEVICE_SELECT_LAYERS
             for p in sorted((root / d).glob("*device_select*.json"))
         ],
     }
 
-    gpus = detect.discover(sysfs_root, runner)
+    gpus = detect.discover(sysfs_root)
+    drm = sysfs_root / "class" / "drm"
+    report["gpus"] = [_gpu_facts(g, drm, root) for g in gpus]
     loads = metrics.sample(gpus, samples=1, **({"runner": runner} if runner else {}))
     report["loads"] = {slot: asdict(load) for slot, load in loads.items()}
-    if win:
-        report["gpus"] = [_windows_gpu_facts(g, loads[g.pci_slot]) for g in gpus]
-        # Raw adapter list, to debug cards that were skipped or mismatched.
-        report["windows_adapters"] = detect._windows_adapters(runner or detect._run)
-    else:
-        drm = sysfs_root / "class" / "drm"
-        report["gpus"] = [_gpu_facts(g, drm, root) for g in gpus]
-    report["nvidia_smi"] = (_nvidia_smi(runner) if any(g.driver == "nvidia" for g in gpus)
+    report["nvidia_smi"] = (_nvidia_smi() if any(g.driver == "nvidia" for g in gpus)
                             else {"skipped": "no card uses the nvidia driver"})
 
     cfg_path = config_path or config.default_path()
@@ -229,12 +202,7 @@ def run_checks(r: dict[str, Any]) -> list[Check]:
     JSON report can be re-checked on another machine."""
     out: list[Check] = []
     gpus = r["gpus"]
-    win = r["meta"].get("os") == "windows"
     if not gpus:
-        if win:
-            return [Check("fail", "no-gpus", "No GPUs found by nvidia-smi or Windows.",
-                          "Check Device Manager under Display adapters, and that "
-                          "PowerShell can run Get-CimInstance Win32_VideoController.")]
         return [Check("fail", "no-gpus", "No GPUs found under /sys/class/drm.",
                       "Check that a GPU driver is loaded: lsmod | grep -E 'nvidia|amdgpu|i915|xe'.")]
     if len(gpus) == 1:
@@ -248,15 +216,8 @@ def run_checks(r: dict[str, Any]) -> list[Check]:
     for g in gpus:
         label = f"{g['vendor']}@{g['pci_slot']}"
         if g["vendor"] == "nvidia" and g["driver"] != "nvidia":
-            if win:
-                out.append(Check("warn", "nvidia-driver", f"{label} is not listed by nvidia-smi.",
-                                 "Install or repair the NVIDIA driver from nvidia.com."))
-            else:
-                out.append(Check("warn", "nouveau", f"{label} uses the {g['driver']} driver.",
-                                 "Install the proprietary NVIDIA driver for load data and CUDA."))
-        if win and g["vendor"] != "nvidia":
-            out.append(Check("info", "windows-load", f"{label}: load is not read on Windows yet.",
-                             "Scores treat this card as half busy."))
+            out.append(Check("warn", "nouveau", f"{label} uses the {g['driver']} driver.",
+                             "Install the proprietary NVIDIA driver for load data and CUDA."))
         width, max_width = g["link"]["current_link_width"], g["link"]["max_link_width"]
         if width and max_width and width.isdigit() and max_width.isdigit():
             if int(width) < int(max_width):
@@ -285,7 +246,7 @@ def run_checks(r: dict[str, Any]) -> list[Check]:
                              "Reinstall the NVIDIA driver utilities, or reboot after a driver update."))
         else:
             out.append(Check("pass", "nvidia-smi", "nvidia-smi works."))
-        if not win and r["modules"]["nvidia_drm_modeset"] not in ("Y", "1"):
+        if r["modules"]["nvidia_drm_modeset"] not in ("Y", "1"):
             out.append(Check("warn", "modeset", "nvidia-drm modeset is off.",
                              "Wayland and PRIME offload need it. Add nvidia-drm.modeset=1 to the "
                              "kernel command line."))
@@ -309,8 +270,7 @@ def run_checks(r: dict[str, Any]) -> list[Check]:
                          f"side={roles['side']}"))
         vendors = [g["vendor"] for g in gpus]
         render = next(g for g in gpus if f"{g['vendor']}@{g['pci_slot']}" == roles["render"])
-        if (not win and vendors.count("nvidia") > 1 and render["vendor"] == "nvidia"
-                and not render["monitors"]):
+        if vendors.count("nvidia") > 1 and render["vendor"] == "nvidia" and not render["monitors"]:
             out.append(Check("warn", "two-nvidia-gl",
                              "Games render on an NVIDIA card with no monitor, next to another "
                              "NVIDIA card. OpenGL programs cannot be steered to it.",
@@ -325,12 +285,7 @@ def run_checks(r: dict[str, Any]) -> list[Check]:
                          "Your shell already sets: " + ", ".join(sorted(r["steering_env"])),
                          "gpubalance overrides these for programs it launches, but other "
                          "programs keep them. Remove them from your shell profile if unintended."))
-    if win and len(gpus) > 1:
-        out.append(Check("info", "windows-graphics",
-                         "On Windows, gpubalance cannot move games between cards.",
-                         "Set a program's GPU in Settings > System > Display > Graphics. "
-                         "Compute, LLM splitting and monitoring work as on Linux."))
-    if not win and not r["vulkan_device_select_layer"] and len(gpus) > 1:
+    if not r["vulkan_device_select_layer"] and len(gpus) > 1:
         out.append(Check("warn", "vk-device-select",
                          "Mesa's Vulkan device-select layer is not installed.",
                          "Without it MESA_VK_DEVICE_SELECT is ignored. Install your distro's "
@@ -366,22 +321,17 @@ def run_checks(r: dict[str, Any]) -> list[Check]:
 
 
 def redact(text: str) -> str:
-    """Hide the home path, user name and host name before sharing.
-
-    Handles both path styles, and the doubled backslashes Windows paths
-    get inside the JSON report.
-    """
+    """Hide the home path, user name and host name before sharing."""
     home = os.path.expanduser("~")
-    if home not in ("", "/", "\\"):
-        for form in {home, home.replace("\\", "\\\\")}:
-            # Only where a path starts, so "/root" inside "/run/user/root" stays.
-            text = re.sub(rf"(?<![\w/\\.-]){re.escape(form)}(?![\w.-])", "~", text)
+    if home not in ("", "/"):
+        # Only where a path starts, so "/root" inside "/run/user/root" stays.
+        text = re.sub(rf"(?<![\w/.-]){re.escape(home)}(?![\w.-])", "~", text)
     user, host = getpass.getuser(), platform.node()
     # The user name only as a path component, so "--root" survives a "root" user.
     if user:
-        text = re.sub(rf"(?<=[/\\]){re.escape(user)}(?=[/\\]|\b)", "<user>", text)
+        text = re.sub(rf"(?<=/){re.escape(user)}(?=/|\b)", "<user>", text)
     if host:
-        text = re.sub(rf"\b{re.escape(host)}\b", "<host>", text, flags=re.IGNORECASE)
+        text = re.sub(rf"\b{re.escape(host)}\b", "<host>", text)
     return text
 
 

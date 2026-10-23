@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 
-from gpubalance import system
 from gpubalance.detect import Gpu
 from gpubalance.metrics import Load
 
@@ -20,16 +19,7 @@ def _vendor_index(gpu: Gpu, gpus: list[Gpu]) -> int:
     return same.index(gpu)
 
 
-WINDOWS_GRAPHICS_HINT = ("Windows picks the GPU for games and other graphics programs itself. "
-                         "To choose, open Settings > System > Display > Graphics and set the "
-                         "program's GPU preference.")
-
-
 def graphics_env(gpu: Gpu) -> dict[str, str]:
-    if system.WINDOWS:
-        # DRI_PRIME, PRIME offload and Mesa's device-select layer are Linux
-        # only. Windows has no environment variable for this.
-        return {}
     env = {
         # Vulkan: Mesa's device-select layer moves this device to the front.
         # The layer sees every Vulkan device, NVIDIA included.
@@ -59,12 +49,9 @@ def compute_env(gpu: Gpu, gpus: list[Gpu], load: Load | None = None) -> dict[str
             "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
             "CUDA_VISIBLE_DEVICES": uuid or index,
         }
-    if gpu.vendor == "amd" and system.WINDOWS:
-        # The HIP SDK on Windows has no ROCr runtime; HIP reads this instead.
-        return {"HIP_VISIBLE_DEVICES": index}
     if gpu.vendor == "amd":
         try:
-            unique = (gpu.sysfs / "unique_id").read_text().strip() if gpu.sysfs else ""
+            unique = (gpu.sysfs / "unique_id").read_text().strip()
         except OSError:
             unique = ""
             log.debug("%s has no unique_id; ROCm gets index %s, which can shift "
@@ -80,8 +67,6 @@ def build_env(
     gpu: Gpu, gpus: list[Gpu], kind: str, load: Load | None = None
 ) -> dict[str, str]:
     env: dict[str, str] = {}
-    if system.WINDOWS and kind == "graphics":
-        log.warning(WINDOWS_GRAPHICS_HINT)
     if kind in ("auto", "graphics"):
         env.update(graphics_env(gpu))
     if kind in ("auto", "compute"):

@@ -10,8 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from gpubalance import (__version__, config, detect, diagnose, launch, llm, log, metrics,
-                        policy, system)
+from gpubalance import __version__, config, detect, diagnose, launch, llm, log, metrics, policy
 from gpubalance.state import State
 
 logger = logging.getLogger("gpubalance.cli")
@@ -41,8 +40,7 @@ def cmd_list(args) -> int:
         return 1
     for g in gpus:
         print(f"{g.card:<7} {g.pci_slot}  {g.vendor:<7} {g.pci_id}  "
-              f"driver={g.driver:<8} render={g.render_node or '-'}  monitors={g.displays}"
-              + (f"  {g.name}" if g.name else ""))
+              f"driver={g.driver:<8} render={g.render_node or '-'}  monitors={g.displays}")
     return 0
 
 
@@ -104,11 +102,10 @@ def _launch(args, state, gpu, kind, command, env, note) -> int:
             print(f"  {key}={value}", file=sys.stderr)
     if args.dry_run:
         return 0
-    def record(pid: int) -> None:
-        state.add(pid, gpu.pci_slot, kind, shlex.join(command))
-
+    # exec keeps our PID, so the record disappears when the program exits.
+    state.add(os.getpid(), gpu.pci_slot, kind, shlex.join(command))
     try:
-        return system.launch(command, env, record)
+        os.execvpe(command[0], command, {**os.environ, **env})
     except OSError as exc:
         print(f"gpubalance: cannot run {command[0]}: {exc}", file=sys.stderr)
         return 127
@@ -193,12 +190,9 @@ def cmd_llm(args) -> int:
     if args.dry_run:
         return 0
     main = chosen[shares.index(max(shares))]
-
-    def record(pid: int) -> None:
-        state.add(pid, slots.get(main.name) or main.name, "llm", shlex.join(full))
-
+    state.add(os.getpid(), slots.get(main.name) or main.name, "llm", shlex.join(full))
     try:
-        return system.launch(full, llm.LAUNCH_ENV, record)
+        os.execvpe(full[0], full, {**os.environ, **llm.LAUNCH_ENV})
     except OSError as exc:
         print(f"gpubalance: cannot run {full[0]}: {exc}", file=sys.stderr)
         return 127
