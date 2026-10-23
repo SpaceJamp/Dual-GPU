@@ -11,11 +11,14 @@ that one card is stronger than the other.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from gpubalance.config import Config
 from gpubalance.detect import Gpu
 from gpubalance.metrics import Load
+
+log = logging.getLogger(__name__)
 
 KINDS = ("auto", "graphics", "compute")
 
@@ -39,10 +42,13 @@ class NoGpuError(RuntimeError):
 def _eligible(gpu: Gpu, kind: str, cfg: Config) -> bool:
     allow = cfg.prefs(gpu.pci_slot).allow
     if kind == "compute" and gpu.driver not in _COMPUTE_DRIVERS:
+        log.debug("%s not eligible for compute: driver %s has no compute stack",
+                  gpu.label, gpu.driver)
         return False
-    if kind == "auto":
-        return bool(allow)
-    return kind in allow
+    ok = bool(allow) if kind == "auto" else kind in allow
+    if not ok:
+        log.debug("%s not eligible for %s: config allows %s", gpu.label, kind, list(allow))
+    return ok
 
 
 def matches(gpu: Gpu, target: str) -> bool:
@@ -69,6 +75,12 @@ def score_all(
         capacity = max(cfg.prefs(gpu.pci_slot).capacity, 0.01)
         raw = cfg.w_util * util + cfg.w_vram * vram + cfg.w_jobs * count
         scored.append(Scored(gpu, raw / capacity, util, vram, count))
+        log.debug(
+            "score %s = (%.2f*util %.2f%s + %.2f*vram %.2f + %.2f*jobs %d) / capacity %.2f = %.3f",
+            gpu.label, cfg.w_util, util, " (assumed)" if load.util is None else "",
+            cfg.w_vram, vram, cfg.w_jobs, count, capacity, raw / capacity,
+            extra={"data": {"gpu": gpu.pci_slot, "util": util, "vram": vram,
+                            "jobs": count, "capacity": capacity, "score": raw / capacity}})
     # Ties go to the lower PCI slot so results are stable.
     return sorted(scored, key=lambda s: (s.score, s.gpu.pci_slot))
 
@@ -112,6 +124,10 @@ def assign_roles(gpus: list[Gpu], cfg: Config) -> dict[str, Gpu]:
     # there too (monitor on the strongest card); then to the spare card.
     spare = [g for g in gpus if g is not render]
     side = display if display is not render else (spare[0] if spare else render)
+    log.info("roles: render=%s (%s) display=%s (%s) side=%s",
+             render.label, "config" if cfg.render else "auto",
+             display.label, "config" if cfg.display else f"{display.displays} monitor(s)",
+             side.label)
     return {"render": render, "display": display, "side": side}
 
 
@@ -128,7 +144,11 @@ def choose(
     pool = [g for g in gpus if matches(g, target)] if target else gpus
     if target and not pool:
         raise NoGpuError(f"no GPU matches '{target}'")
+    if target:
+        log.debug("target %r limits the choice to %s", target, [g.label for g in pool])
     ranked = score_all(pool, loads, jobs, cfg, kind)
     if not ranked:
         raise NoGpuError(f"no GPU is eligible for {kind} work")
+    log.info("chose %s for %s work (score %.3f; ranking %s)", ranked[0].gpu.label, kind,
+             ranked[0].score, ", ".join(f"{r.gpu.label}={r.score:.3f}" for r in ranked))
     return ranked[0]

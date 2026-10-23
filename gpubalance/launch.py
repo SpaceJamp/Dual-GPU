@@ -6,8 +6,12 @@ each read their own variables, so we set the ones that apply to the target.
 
 from __future__ import annotations
 
+import logging
+
 from gpubalance.detect import Gpu
 from gpubalance.metrics import Load
+
+log = logging.getLogger(__name__)
 
 
 def _vendor_index(gpu: Gpu, gpus: list[Gpu]) -> int:
@@ -50,6 +54,8 @@ def compute_env(gpu: Gpu, gpus: list[Gpu], load: Load | None = None) -> dict[str
             unique = (gpu.sysfs / "unique_id").read_text().strip()
         except OSError:
             unique = ""
+            log.debug("%s has no unique_id; ROCm gets index %s, which can shift "
+                      "if devices enumerate in another order", gpu.label, index)
         # ROCm accepts "GPU-<unique_id>", which survives enumeration order changes.
         return {"ROCR_VISIBLE_DEVICES": f"GPU-{unique}" if unique else index}
     if gpu.vendor == "intel":
@@ -66,4 +72,5 @@ def build_env(
     if kind in ("auto", "compute"):
         env.update(compute_env(gpu, gpus, load))
     env["GPUBALANCE_GPU"] = gpu.pci_slot
+    log.debug("env for %s (%s): %s", gpu.label, kind, env)
     return env

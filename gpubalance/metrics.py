@@ -8,12 +8,16 @@ Sources by driver:
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import time
 from dataclasses import dataclass
 from typing import Callable, Iterable
 
 from gpubalance.detect import Gpu
+from gpubalance.log import timed
+
+log = logging.getLogger(__name__)
 
 Runner = Callable[[list[str]], str]
 
@@ -49,7 +53,8 @@ def _run(cmd: list[str]) -> str:
 def _int_file(path) -> int | None:
     try:
         return int(path.read_text().strip())
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        log.debug("cannot read %s: %s", path, exc)
         return None
 
 
@@ -69,17 +74,30 @@ def _number(value: str) -> float | None:
 def read_nvidia(runner: Runner = _run) -> dict[str, Load]:
     """Query all NVIDIA GPUs at once, keyed by PCI slot."""
     try:
-        out = runner(_NVIDIA_QUERY)
-    except (OSError, subprocess.SubprocessError):
+        with timed(log, "nvidia-smi query"):
+            out = runner(_NVIDIA_QUERY)
+    except subprocess.CalledProcessError as exc:
+        log.warning("nvidia-smi exited with %s: %s", exc.returncode,
+                    (exc.stderr or exc.stdout or "").strip()[:500])
         return {}
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("nvidia-smi unavailable, NVIDIA load unknown: %s", exc)
+        return {}
+    log.debug("nvidia-smi output: %r", out)
     loads = {}
     for line in out.strip().splitlines():
         parts = [p.strip() for p in line.split(",")]
         if len(parts) != 5:
+            log.warning("nvidia-smi line has %d fields, expected 5: %r", len(parts), line)
             continue
         bus, uuid, util, used, total = parts
         used_n, total_n = _number(used), _number(total)
-        loads[_normalize_bus_id(bus)] = Load(
+        try:
+            slot = _normalize_bus_id(bus)
+        except ValueError:
+            log.warning("nvidia-smi bus ID not understood: %r", bus)
+            continue
+        loads[slot] = Load(
             util=_number(util),
             vram_used=int(used_n * _MIB) if used_n is not None else None,
             vram_total=int(total_n * _MIB) if total_n is not None else None,
@@ -108,6 +126,7 @@ def read_amd(gpu: Gpu, samples: int = 5, interval: float = 0.1) -> Load:
     last = reads[-1]
     utils = [r.util for r in reads if r.util is not None]
     last.util = sum(utils) / len(utils) if utils else None
+    log.debug("%s busy samples %s -> %s%%", gpu.label, utils, last.util)
     return last
 
 
@@ -125,5 +144,17 @@ def sample(
         elif gpu.pci_slot in nvidia:
             loads[gpu.pci_slot] = nvidia[gpu.pci_slot]
         else:
+            if gpu.driver == "nvidia" and not nvidia:
+                reason = "nvidia-smi gave no data"
+            elif gpu.driver == "nvidia":
+                reason = f"nvidia-smi listed {sorted(nvidia)} but not this slot"
+            elif gpu.vendor == "nvidia":
+                reason = f"driver is {gpu.driver}; load needs the proprietary nvidia driver"
+            else:
+                reason = f"no load source for driver {gpu.driver}"
+            log.info("%s load unknown: %s", gpu.label, reason)
             loads[gpu.pci_slot] = Load()
+    for slot, load in loads.items():
+        log.debug("load %s: util=%s vram=%s/%s source=%s", slot, load.util,
+                  load.vram_used, load.vram_total, load.source)
     return loads

@@ -9,6 +9,7 @@ card gets a share that matches its free VRAM.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
@@ -16,6 +17,9 @@ from dataclasses import dataclass
 from typing import Callable
 
 from gpubalance.detect import Gpu
+from gpubalance.log import timed
+
+log = logging.getLogger(__name__)
 
 # "  CUDA0: NVIDIA GeForce RTX 4090 (24080 MiB, 23400 MiB free)"
 _LINE = re.compile(r"^\s*(\S+): (.+) \((\d+) MiB, (\d+) MiB free\)\s*$")
@@ -66,6 +70,10 @@ def parse_devices(text: str) -> list[LlamaDevice]:
         m = _LINE.match(line)
         if m:
             devices.append(LlamaDevice(m[1], m[2], int(m[3]), int(m[4])))
+        elif ": " in line and "MiB" in line:
+            # Looks like a device line in a format we do not know yet.
+            log.warning("device line not understood: %r", line)
+    log.debug("llama.cpp devices: %s", [f"{d.name}={d.description}" for d in devices])
     return devices
 
 
@@ -78,11 +86,15 @@ LAUNCH_ENV = {"CUDA_DEVICE_ORDER": "PCI_BUS_ID"}
 def list_devices(binary: str, runner: Callable[[list[str]], str] | None = None) -> list[LlamaDevice]:
     cmd = [binary, "--list-devices"]
     try:
-        if runner:
-            out = runner(cmd)
-        else:
-            out = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
-                                 env={**os.environ, **LAUNCH_ENV}).stdout
+        with timed(log, f"{binary} --list-devices"):
+            if runner:
+                out = runner(cmd)
+            else:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
+                                      env={**os.environ, **LAUNCH_ENV})
+                out = proc.stdout
+                log.debug("--list-devices exit %d, stderr: %r", proc.returncode,
+                          proc.stderr[-2000:])
     except (OSError, subprocess.SubprocessError) as exc:
         raise LlmError(f"could not run {binary} --list-devices: {exc}") from exc
     return parse_devices(out)
@@ -123,6 +135,8 @@ def one_per_card(devices: list[LlamaDevice]) -> list[LlamaDevice]:
         twin = next((k for k in free if _same_model(k, dev)), free[0] if free else None)
         if twin:
             claimed.add((twin.name, dev.backend))
+            log.debug("%s is the same card as %s (%s match); keeping %s", dev.name,
+                      twin.name, "name" if _same_model(twin, dev) else "memory", twin.name)
         else:
             kept.append(dev)
     # Back to llama.cpp's own order so the split lines up with --device.
@@ -148,6 +162,7 @@ def map_slots(devices: list[LlamaDevice], gpus: list[Gpu]) -> dict[str, str | No
             slots[dev.name] = same[0].pci_slot
         else:
             slots[dev.name] = None
+    log.debug("device to slot map: %s", slots)
     return slots
 
 
@@ -168,6 +183,11 @@ def plan(
     if mode not in _MODES:
         raise ValueError(f"mode must be one of {_MODES}")
     usable = [d for d in one_per_card(devices) if d.name not in skip]
+    if skip:
+        log.info("leaving out %s", sorted(skip))
+    for dev in usable:
+        log.debug("%s: %d MiB free, %d MiB reserve%s", dev.name, dev.free_mib, reserve_mib,
+                  "" if dev.free_mib > reserve_mib else ", no room left")
     room = [(d, d.free_mib - reserve_mib) for d in usable]
     room = [(d, mib) for d, mib in room if mib > 0]
     if not room:
