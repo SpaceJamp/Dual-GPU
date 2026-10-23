@@ -50,7 +50,7 @@ class MetricsTest(Base):
 
     def test_na_fields_do_not_crash(self):
         def runner(cmd):
-            return "00000000:01:00.0, GPU-x, [N/A], 100, 1000, Odd, Name\n"
+            return "00000000:01:00.0, GPU-x, [N/A], 100, 1000, 50, [N/A], [N/A], Odd, Name\n"
         loads = metrics.read_nvidia(runner)
         self.assertIsNone(loads["0000:01:00.0"].util)
         self.assertEqual(loads["0000:01:00.0"].name, "Odd, Name")
