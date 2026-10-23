@@ -1,0 +1,33 @@
+# Copy to ~/.config/gpubalance/config.toml
+
+# Lower score wins. util and vram are fractions (0 to 1); jobs is a count.
+[weights]
+utilization = 1.0
+vram = 0.5
+jobs = 0.3
+
+# Load to assume for a GPU whose counters can't be read (0 to 1).
+unknown_utilization = 0.5
+
+# AMD utilization reads, 100 ms apart, averaged per decision.
+samples = 5
+
+# Per card settings, keyed by PCI slot from `gpubalance list`.
+[gpu."0000:01:00.0"]
+capacity = 1.5            # this card is about 1.5x the other one
+allow = ["graphics", "compute"]
+
+[gpu."0000:03:00.0"]
+capacity = 1.0
+allow = ["graphics", "compute"]
+
+# Always send these programs to one GPU (vendor, PCI slot or card name).
+[pin]
+blender = "nvidia"
+obs = "amd"
+
+# Who renders games and who drives the monitors for `game` and `side`.
+# Leave out to decide from where your monitors are plugged in.
+[roles]
+render = "nvidia"
+display = "amd"
