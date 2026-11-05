@@ -14,14 +14,18 @@ public static partial class MiniDump
     private static readonly object Gate = new();
 
     /// <summary>Returns false when dbghelp reports a failure.</summary>
-    public static bool Write(string path)
+    public static bool Write(string path) => Write(path, out _);
+
+    /// <summary>Returns false when dbghelp reports a failure; lastError is then GetLastError (an HRESULT).</summary>
+    public static bool Write(string path, out int lastError)
     {
+        lastError = 0;
         // dbghelp functions are single-threaded; serialize calls.
         lock (Gate)
         {
             using var process = Process.GetCurrentProcess();
             using var file = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.None);
-            return MiniDumpWriteDump(
+            var ok = MiniDumpWriteDump(
                 process.Handle,
                 (uint)process.Id,
                 file.SafeFileHandle,
@@ -29,6 +33,8 @@ public static partial class MiniDump
                 IntPtr.Zero,
                 IntPtr.Zero,
                 IntPtr.Zero);
+            if (!ok) lastError = Marshal.GetLastPInvokeError();
+            return ok;
         }
     }
 

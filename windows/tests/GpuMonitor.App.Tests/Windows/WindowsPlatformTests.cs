@@ -26,6 +26,15 @@ public class WindowsPlatformTests
     }
 
     [Fact]
+    public void EventLog_XPathMatchesBrief()
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only");
+        Assert.Equal(
+            "*[System[(Provider[@Name='nvlddmkm'] or (Provider[@Name='Display'] and EventID=4101)) and TimeCreated[timediff(@SystemTime) <= 604800000]]]",
+            EventLogSource.XPath(TimeSpan.FromDays(7)));
+    }
+
+    [Fact]
     public void RunKey_RoundTrip()
     {
         if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only");

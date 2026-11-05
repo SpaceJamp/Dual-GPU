@@ -14,7 +14,7 @@ public class PlatformTests
         {
             var log = new AppLog(null, LogLevel.Debug, json: false);
             for (var i = 0; i < 50; i++) log.Info("test", "line " + i);
-            CrashHandler.Install(log, dir);
+            CrashHandler.Configure(log, dir);
 
             var written = new List<string>();
             for (var i = 0; i < 5; i++)
@@ -34,9 +34,35 @@ public class PlatformTests
             Assert.DoesNotContain("line 9\n", text);
             Assert.Matches(@"crash-\d{8}-\d{6}-\d{3}\.txt$", written[^1]);
 
+            // Only App's Windows build writes dumps; the net10.0 build runs on Windows CI too.
             var dmp = Directory.GetFiles(dir, "crash-*.dmp");
-            if (OperatingSystem.IsWindows()) Assert.Equal(3, dmp.Length);
-            else Assert.Empty(dmp);
+#if WINDOWS
+            Assert.Equal(3, dmp.Length);
+#else
+            Assert.Empty(dmp);
+#endif
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CrashHandler_SameExceptionTwice_WritesOnce()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "gpumon-crash-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            CrashHandler.Configure(new AppLog(null, LogLevel.Debug, json: false), dir);
+            var ex = new InvalidOperationException("once");
+
+            Assert.True(CrashHandler.Handle("Dispatcher", ex));
+            Assert.False(CrashHandler.Handle("AppDomain", ex));
+            Assert.Single(Directory.GetFiles(dir, "crash-*.txt"));
+
+            Assert.True(CrashHandler.Handle("AppDomain", new InvalidOperationException("other")));
+            Assert.Equal(2, Directory.GetFiles(dir, "crash-*.txt").Length);
         }
         finally
         {

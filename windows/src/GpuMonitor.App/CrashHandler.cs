@@ -21,13 +21,14 @@ public static class CrashHandler
     private static string _dir = Paths.CrashDir;
     private static bool _hooked;
     private static DateTime _lastStamp = DateTime.MinValue;
+    private static Exception? _lastHandled;
 
+    /// <summary>Call on the UI thread at startup: it reads Dispatcher.UIThread.</summary>
     public static void Install(AppLog log, string crashDir)
     {
+        Configure(log, crashDir);
         lock (Gate)
         {
-            _log = log;
-            _dir = crashDir;
             if (_hooked) return;
             _hooked = true;
         }
@@ -38,12 +39,31 @@ public static class CrashHandler
         Dispatcher.UIThread.UnhandledException += (_, e) => Handle("Dispatcher", e.Exception);
     }
 
-    private static void Handle(string source, Exception ex)
+    /// <summary>Sets the log and folder without hooking any event (tests use this so the
+    /// test host's dispatcher and process-wide handlers are left alone).</summary>
+    internal static void Configure(AppLog log, string crashDir)
     {
+        lock (Gate)
+        {
+            _log = log;
+            _dir = crashDir;
+        }
+    }
+
+    /// <summary>Logs and writes one crash. The same exception object seen again (for example
+    /// Dispatcher then AppDomain for one crash) is skipped. Returns false when skipped.</summary>
+    internal static bool Handle(string source, Exception ex)
+    {
+        lock (Gate)
+        {
+            if (ReferenceEquals(ex, _lastHandled)) return false;
+            _lastHandled = ex;
+        }
         try { _log.Error("crash", "Unhandled exception (" + source + ")", ex); }
         catch (Exception) { /* never throw from a crash handler */ }
         try { WriteCrash(ex); }
         catch (Exception) { /* never throw from a crash handler */ }
+        return true;
     }
 
     /// <summary>Writes crash-&lt;stamp&gt;.txt (and .dmp on Windows), prunes old ones, returns the .txt path.</summary>
@@ -57,7 +77,7 @@ public static class CrashHandler
         {
             log = _log;
             dir = _dir;
-            now = DateTime.Now;
+            now = DateTime.UtcNow;
             // Keep stems unique and in time order even when two crashes share a millisecond.
             var stamp = new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMillisecond, now.Kind);
             if (stamp <= _lastStamp) stamp = _lastStamp.AddMilliseconds(1);
@@ -77,11 +97,25 @@ public static class CrashHandler
 
 #if WINDOWS
         var dmp = Path.Combine(dir, stem + ".dmp");
+        string? dumpError = null;
         try
         {
-            if (!MiniDump.Write(dmp)) File.Delete(dmp);
+            if (!MiniDump.Write(dmp, out var lastError))
+                dumpError = "MiniDumpWriteDump failed, last error 0x" + lastError.ToString("X8", CultureInfo.InvariantCulture);
         }
-        catch (Exception) { /* the text file is the part that matters */ }
+        catch (Exception dumpEx)
+        {
+            dumpError = "Minidump failed: " + dumpEx.GetType().Name + ": " + dumpEx.Message;
+        }
+        if (dumpError is not null)
+        {
+            try { File.Delete(dmp); }
+            catch (Exception) { /* nothing more to do */ }
+            try { log.Error("crash", dumpError); }
+            catch (Exception) { /* never throw from a crash handler */ }
+            try { File.AppendAllText(txt, "\n" + dumpError + "\n", new UTF8Encoding(false)); }
+            catch (Exception) { /* the text file already holds the exception */ }
+        }
 #endif
 
         try { Prune(dir); }

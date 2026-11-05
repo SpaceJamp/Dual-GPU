@@ -10,6 +10,7 @@ public sealed class NvidiaSmiSource : INvidiaSmi
 {
     private const string ExeName = "nvidia-smi.exe";
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(2);
 
     public string? QueryAll()
     {
@@ -29,6 +30,12 @@ public sealed class NvidiaSmiSource : INvidiaSmi
         {
             try { process.Kill(entireProcessTree: true); }
             catch (Exception) { /* already gone */ }
+            _ = output.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
+            return "error: timeout";
+        }
+        if (!output.Wait(ReadTimeout))
+        {
+            _ = output.ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
             return "error: timeout";
         }
         return output.GetAwaiter().GetResult();
