@@ -15,6 +15,7 @@ internal sealed unsafe class NvmlNative
     public const int VbiosBufferSize = 32;    // NVML_DEVICE_VBIOS_VERSION_BUFFER_SIZE
     public const int DriverBufferSize = 80;   // NVML_SYSTEM_DRIVER_VERSION_BUFFER_SIZE
     public const int NvmlVersionBufferSize = 80; // NVML_SYSTEM_NVML_VERSION_BUFFER_SIZE
+    public const int PciBusIdBufferSize = 32; // NVML_DEVICE_PCI_BUS_ID_BUFFER_SIZE
 
     // nvml.h enum values.
     public const int TemperatureGpu = 0;      // NVML_TEMPERATURE_GPU
@@ -30,7 +31,7 @@ internal sealed unsafe class NvmlNative
         public uint Device;
         public uint PciDeviceId;
         public uint PciSubSystemId;
-        public fixed byte BusId[32];          // NVML_DEVICE_PCI_BUS_ID_BUFFER_SIZE
+        public fixed byte BusId[PciBusIdBufferSize];
     }
 
     /// <summary>nvmlMemory_t (v1). 24 bytes.</summary>

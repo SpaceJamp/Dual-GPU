@@ -61,6 +61,17 @@ public class NvmlApiTests
         Assert.Equal("test-library", ((NvmlApi)api).LoadedPath);
     }
 
+    [Fact]
+    public void BusIdOf_ReadsBusIdNotLegacy()
+    {
+        var pci = new NvmlNative.PciInfo();
+        var bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref pci, 1));
+        "0000:01:00.0"u8.CopyTo(bytes);   // busIdLegacy at offset 0
+        "00000000:01:00.0"u8.CopyTo(bytes[(int)Marshal.OffsetOf<NvmlNative.PciInfo>(nameof(NvmlNative.PciInfo.BusId))..]);
+
+        Assert.Equal("00000000:01:00.0", NvmlApi.BusIdOf(pci));
+    }
+
     [Theory]
     [InlineData(new byte[] { 0x41, 0x42, 0, 0x43 }, "AB")]
     [InlineData(new byte[] { 0, 0x41 }, "")]

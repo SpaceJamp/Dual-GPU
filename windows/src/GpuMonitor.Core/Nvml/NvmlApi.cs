@@ -68,8 +68,15 @@ public sealed unsafe class NvmlApi : INvml
     {
         NvmlNative.PciInfo pci = default;
         var rc = _native.DeviceGetPciInfo_v3(handle, &pci);
-        busId = Text(rc, pci.BusIdLegacy, 16);
+        busId = rc == NvmlReturn.Success ? BusIdOf(pci) : "";
         return rc;
+    }
+
+    /// <summary>The card key: the 32-byte busId field ("%08X:%02X:%02X.0", e.g. 00000000:01:00.0), not busIdLegacy.</summary>
+    internal static string BusIdOf(in NvmlNative.PciInfo pci)
+    {
+        fixed (byte* busId = pci.BusId)
+            return Decode(new ReadOnlySpan<byte>(busId, NvmlNative.PciBusIdBufferSize));
     }
 
     public NvmlReturn GetVbios(nint handle, out string version)
