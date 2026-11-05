@@ -53,11 +53,11 @@ internal static class VmKit
     }
 
     public static MainViewModel MainVm(string dir, NvmlReturn init = NvmlReturn.Success, string? loadError = null,
-        AppLog? log = null, History? history = null)
+        AppLog? log = null, History? history = null, Recorder? recorder = null)
     {
         log ??= new AppLog(null, LogLevel.Debug, false);
         var current = new CurrentSettings(new AppSettings());
-        var diagnostics = new DiagnosticsViewModel(log, () => Collector(log), new Recorder(Path.Combine(dir, "rec")));
+        var diagnostics = new DiagnosticsViewModel(log, () => Collector(log), recorder ?? new Recorder(Path.Combine(dir, "rec")));
         var settings = new SettingsViewModel(new SettingsStore(Path.Combine(dir, "settings.json"), log),
             new FakeStartup(), log, current);
         return new MainViewModel(init, loadError, log, history ?? new History(), current, diagnostics, settings);

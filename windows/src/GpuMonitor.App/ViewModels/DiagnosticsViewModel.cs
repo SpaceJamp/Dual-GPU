@@ -42,6 +42,10 @@ public sealed class DiagnosticsViewModel : ObservableBase
         _logDir = logDir ?? Paths.LogDir;
         _clock = clock ?? TimeProvider.System;
         _isRecording = recorder.IsRecording;
+        // Lines logged before the window existed (startup). A line written between Tail and the
+        // subscription can be missed; subscribing first could show it twice instead.
+        foreach (var text in log.Tail(MaxLogLines))
+            if (LogTailParser.TryParse(text, out var line)) Add(line);
         log.Line += OnLine;
 
         CreateReportCommand = new RelayCommand(CreateReportInBackground);
@@ -90,14 +94,16 @@ public sealed class DiagnosticsViewModel : ObservableBase
     public RelayCommand OpenLogFolderCommand { get; }
     public RelayCommand ToggleRecordingCommand { get; }
 
-    /// <summary>Collects facts, runs the checks and returns the redacted text report. Runs on the calling thread.</summary>
-    public string CreateReport() => Apply(Collect());
+    /// <summary>Collects facts on a worker thread, runs the checks, and returns the redacted text report.
+    /// Timings, Events and ReportText are set when the await resumes (on the UI thread when called from it).</summary>
+    public async Task<string> CreateReport() => Apply(await Task.Run(Collect));
 
     public async Task CopyReport()
     {
         try
         {
             if (ReportText.Length == 0) await CreateReportInBackground();
+            if (ReportText.Length == 0) return; // creating failed; keep its error in Status
             if (CopyText is null) { Status = "Clipboard is not available."; return; }
             await CopyText(ReportText);
             Status = "Report copied.";
@@ -109,12 +115,13 @@ public sealed class DiagnosticsViewModel : ObservableBase
         }
     }
 
-    public void SaveReport(string path)
+    public async Task SaveReport(string path)
     {
         try
         {
-            var text = ReportText.Length == 0 ? CreateReport() : ReportText;
-            File.WriteAllText(path, text);
+            if (ReportText.Length == 0) await CreateReportInBackground();
+            if (ReportText.Length == 0) return; // creating failed; keep its error in Status
+            await File.WriteAllTextAsync(path, ReportText);
             Status = "Report saved to " + path;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
@@ -158,7 +165,10 @@ public sealed class DiagnosticsViewModel : ObservableBase
             _log.Error(Source, "Could not start recording: " + ex.Message, ex);
             Status = "Could not start recording: " + ex.Message;
         }
-        IsRecording = _recorder.IsRecording;
+        finally
+        {
+            IsRecording = _recorder.IsRecording;
+        }
     }
 
     /// <summary>Writes the poll to the recording, if one is running.</summary>
@@ -181,13 +191,18 @@ public sealed class DiagnosticsViewModel : ObservableBase
         Status = message;
     }
 
+    /// <summary>Shows a message in Status without logging (the command error handler logs it).</summary>
+    internal void ShowStatus(string message) => Status = message;
+
+    internal IEnumerable<RelayCommand> Commands =>
+        [CreateReportCommand, CopyReportCommand, OpenLogFolderCommand, ToggleRecordingCommand];
+
     private async Task CreateReportInBackground()
     {
         try
         {
             Status = "Creating report...";
-            var facts = await Task.Run(Collect);
-            Apply(facts);
+            await CreateReport();
             Status = "Report created.";
         }
         catch (Exception ex)

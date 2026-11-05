@@ -32,7 +32,16 @@ public sealed class MainViewModel : ObservableBase
         Settings = settingsViewModel;
         Settings.Saved += s => HeatLimitC = s.HeatLimitC;
         _heatLimitC = settings.Value.HeatLimitC;
+        foreach (var c in Diagnostics.Commands)
+            c.OnError = ex => CommandFailed(ex, Diagnostics.ShowStatus);
+        Settings.SaveCommand.OnError = ex => CommandFailed(ex, Settings.ShowStatus);
         UpdateBanner();
+    }
+
+    private void CommandFailed(Exception ex, Action<string> showStatus)
+    {
+        _log.Error("ui", "Command failed: " + ex.Message, ex);
+        showStatus("Something went wrong: " + ex.Message);
     }
 
     /// <summary>One entry per card, ordered by PCI bus ID. Items are inserted in place and never moved.</summary>

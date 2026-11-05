@@ -44,7 +44,7 @@ public partial class MainWindow : Window
                 SuggestedFileName = "gpumonitor-report.txt",
                 DefaultExtension = "txt",
             });
-            if (file?.TryGetLocalPath() is { } path) vm.Diagnostics.SaveReport(path);
+            if (file?.TryGetLocalPath() is { } path) await vm.Diagnostics.SaveReport(path);
         }
         catch (Exception ex)
         {

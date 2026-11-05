@@ -262,7 +262,7 @@ public class ViewModelTests
             copyText: t => { copied = t; return Task.CompletedTask; },
             openFolder: d => opened = d, logDir: Path.Combine(dir, "logs"));
 
-        var text = vm.CreateReport();
+        var text = await vm.CreateReport();
         Assert.StartsWith("GPU Monitor diagnostic report", text);
         Assert.Contains("nvml.dll not found", text);
         Assert.Equal(text, vm.ReportText);
@@ -273,7 +273,7 @@ public class ViewModelTests
         Assert.Equal(text, copied);
 
         var file = Path.Combine(dir, "report.txt");
-        vm.SaveReport(file);
+        await vm.SaveReport(file);
         Assert.Equal(text, File.ReadAllText(file));
 
         vm.OpenLogFolder();
@@ -297,5 +297,107 @@ public class ViewModelTests
         var lines = File.ReadAllLines(Directory.GetFiles(rec).Single());
         Assert.Equal(2, lines.Length);
         Assert.Contains(Bus1, lines[1]);
+    }
+
+    [AvaloniaFact]
+    public async Task Diagnostics_CollectsOffUiThread()
+    {
+        var log = new AppLog(null, LogLevel.Debug, false);
+        var onUi = new List<bool>();
+        Func<GpuMonitor.Core.Diagnostics.FactCollector> collector = () =>
+        {
+            lock (onUi) onUi.Add(Avalonia.Threading.Dispatcher.UIThread.CheckAccess());
+            return Collector(log);
+        };
+        Assert.True(Avalonia.Threading.Dispatcher.UIThread.CheckAccess());
+
+        var create = new DiagnosticsViewModel(log, collector, new Recorder(TempDir()));
+        await create.CreateReport();
+        var save = new DiagnosticsViewModel(log, collector, new Recorder(TempDir()));
+        await save.SaveReport(Path.Combine(TempDir(), "r.txt"));
+        var copy = new DiagnosticsViewModel(log, collector, new Recorder(TempDir()), copyText: _ => Task.CompletedTask);
+        await copy.CopyReport();
+
+        Assert.Equal(new[] { false, false, false }, onUi);
+        Assert.NotEqual("", save.ReportText);
+    }
+
+    [AvaloniaFact]
+    public async Task Diagnostics_FailedCreateKeepsErrorAndCopiesNothing()
+    {
+        var log = new AppLog(null, LogLevel.Debug, false);
+        string? copied = null;
+        var vm = new DiagnosticsViewModel(log, () => throw new InvalidOperationException("boom"), new Recorder(TempDir()),
+            copyText: t => { copied = t; return Task.CompletedTask; });
+
+        await vm.CopyReport();
+        Assert.Null(copied);
+        Assert.Equal("Could not create the report: boom", vm.Status);
+
+        var file = Path.Combine(TempDir(), "r.txt");
+        await vm.SaveReport(file);
+        Assert.False(File.Exists(file));
+        Assert.Equal("Could not create the report: boom", vm.Status);
+    }
+
+    [Fact]
+    public void RelayCommand_ThrowingBodyGoesToOnError()
+    {
+        Exception? seen = null;
+        var cmd = new RelayCommand(() => throw new InvalidOperationException("bad")) { OnError = e => seen = e };
+
+        cmd.Execute(null);
+
+        Assert.Equal("bad", Assert.IsType<InvalidOperationException>(seen).Message);
+        Assert.True(cmd.CanExecute(null));
+    }
+
+    [AvaloniaFact]
+    public void Command_ErrorIsLoggedNotThrown()
+    {
+        var log = new AppLog(null, LogLevel.Debug, false);
+        // A NUL in the path makes Recorder.Start throw ArgumentException, which ToggleRecording does not catch.
+        var vm = MainVm(TempDir(), log: log, recorder: new Recorder(Path.Combine(TempDir(), "bad\0dir")));
+
+        vm.Diagnostics.ToggleRecordingCommand.Execute(null);
+
+        Assert.False(vm.Diagnostics.IsRecording);
+        Assert.StartsWith("Something went wrong: ", vm.Diagnostics.Status);
+        Assert.Contains(log.Tail(50), l => l.Contains(" ERROR   ui: Command failed: "));
+    }
+
+    [AvaloniaFact]
+    public void Diagnostics_SeedsLogFromTail()
+    {
+        var log = new AppLog(null, LogLevel.Debug, false);
+        log.Debug("startup", "early debug");
+        log.Warn("startup", "early warning", new InvalidOperationException("with stack"));
+
+        var vm = new DiagnosticsViewModel(log, () => Collector(log), new Recorder(TempDir()));
+        log.Info("t", "later");
+
+        Assert.Equal(3, vm.LogLines.Count);
+        Assert.EndsWith("DEBUG   startup: early debug", vm.LogLines[0]);
+        Assert.EndsWith("WARNING startup: early warning", vm.LogLines[1]);
+        Assert.EndsWith("INFO    t: later", vm.LogLines[2]);
+
+        vm.MinLevel = LogLevel.Warning;
+        Assert.EndsWith("early warning", Assert.Single(vm.LogLines));
+    }
+
+    [AvaloniaFact]
+    public void Diagnostics_SeedsLogFromJsonFile()
+    {
+        var path = Path.Combine(TempDir(), "log.log");
+        using var log = new AppLog(path, LogLevel.Debug, json: true);
+        log.Error("startup", "json line", new InvalidOperationException("x"));
+        log.Json = false;
+        log.Info("startup", "text line");
+
+        var vm = new DiagnosticsViewModel(log, () => Collector(log), new Recorder(TempDir()));
+
+        Assert.Equal(2, vm.LogLines.Count);
+        Assert.EndsWith("ERROR   startup: json line", vm.LogLines[0]);
+        Assert.EndsWith("INFO    startup: text line", vm.LogLines[1]);
     }
 }

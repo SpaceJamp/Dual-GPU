@@ -100,4 +100,24 @@ public class MainWindowTests
         Assert.Equal(2.5, vm.Settings.RefreshSeconds);
         Assert.Equal(70, vm.Settings.HeatLimitC);
     }
+
+    [AvaloniaFact]
+    public void SettingsEditors_ClearedBoxShowsSavedValue()
+    {
+        var vm = MainVm(TempDir());
+        var window = Shown(vm);
+        window.GetLogicalDescendants().OfType<TabControl>().Single().SelectedIndex = 2;
+        Dispatcher.UIThread.RunJobs();
+        var refresh = window.FindControl<NumericUpDown>("RefreshEditor")!;
+        var heat = window.FindControl<NumericUpDown>("HeatEditor")!;
+
+        refresh.Value = null;
+        heat.Value = null;
+        vm.Settings.Save();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(1.0m, refresh.Value);
+        Assert.Equal(80m, heat.Value);
+        Assert.Equal(1.0, vm.Settings.RefreshSeconds);
+    }
 }

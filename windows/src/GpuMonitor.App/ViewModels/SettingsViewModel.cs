@@ -14,9 +14,9 @@ public sealed class SettingsViewModel : ObservableBase
     private readonly AppLog _log;
     private readonly CurrentSettings _current;
 
-    private double _refreshSeconds;
-    private int _heatLimitC;
-    private int _vramLimitPct;
+    private double? _refreshSeconds;
+    private int? _heatLimitC;
+    private int? _vramLimitPct;
     private LogLevel _logLevel;
     private bool _logJson;
     private bool _startWithWindows;
@@ -37,9 +37,11 @@ public sealed class SettingsViewModel : ObservableBase
 
     public IReadOnlyList<LogLevel> LogLevels { get; } = Enum.GetValues<LogLevel>();
 
-    public double RefreshSeconds { get => _refreshSeconds; set => Set(ref _refreshSeconds, value); }
-    public int HeatLimitC { get => _heatLimitC; set => Set(ref _heatLimitC, value); }
-    public int VramLimitPct { get => _vramLimitPct; set => Set(ref _vramLimitPct, value); }
+    // Nullable because a cleared NumericUpDown writes null. Save treats null as "keep the current value",
+    // and Load then puts the real value back, which the box shows because the value changed.
+    public double? RefreshSeconds { get => _refreshSeconds; set => Set(ref _refreshSeconds, value); }
+    public int? HeatLimitC { get => _heatLimitC; set => Set(ref _heatLimitC, value); }
+    public int? VramLimitPct { get => _vramLimitPct; set => Set(ref _vramLimitPct, value); }
     public LogLevel LogLevel { get => _logLevel; set => Set(ref _logLevel, value); }
     public bool LogJson { get => _logJson; set => Set(ref _logJson, value); }
     public bool StartWithWindows { get => _startWithWindows; set => Set(ref _startWithWindows, value); }
@@ -53,11 +55,12 @@ public sealed class SettingsViewModel : ObservableBase
     /// <summary>Clamps, writes the file, applies startup and log settings, and publishes the new settings.</summary>
     public void Save()
     {
+        var before = _current.Value;
         var s = new AppSettings
         {
-            RefreshSeconds = RefreshSeconds,
-            HeatLimitC = HeatLimitC,
-            VramLimitPct = VramLimitPct,
+            RefreshSeconds = RefreshSeconds ?? before.RefreshSeconds,
+            HeatLimitC = HeatLimitC ?? before.HeatLimitC,
+            VramLimitPct = VramLimitPct ?? before.VramLimitPct,
             LogLevel = LogLevel,
             LogJson = LogJson,
             StartWithWindows = StartWithWindows,
@@ -88,6 +91,8 @@ public sealed class SettingsViewModel : ObservableBase
         _current.Value = s;
         Saved?.Invoke(s);
     }
+
+    internal void ShowStatus(string message) => Status = message;
 
     private void Load(AppSettings s)
     {
