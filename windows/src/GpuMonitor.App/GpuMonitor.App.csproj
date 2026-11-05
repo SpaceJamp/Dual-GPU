@@ -4,6 +4,7 @@
     <OutputType>WinExe</OutputType>
     <AssemblyName>GpuMonitor</AssemblyName>
     <RootNamespace>GpuMonitor.App</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)'=='net10.0'">
     <Compile Remove="Platform/Windows/**" />
