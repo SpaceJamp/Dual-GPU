@@ -19,6 +19,10 @@
     <PackageReference Include="System.Diagnostics.EventLog" Version="10.0.14" />
   </ItemGroup>
   <ItemGroup>
+    <AvaloniaResource Include="Assets/icon.png;Assets/icon.ico" />
+    <Content Include="Assets/icon.png;Assets/icon.ico" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../GpuMonitor.Core/GpuMonitor.Core.csproj" />
     <InternalsVisibleTo Include="GpuMonitor.App.Tests" />
   </ItemGroup>

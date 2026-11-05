@@ -1,4 +1,5 @@
 using System.Globalization;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
@@ -28,8 +29,22 @@ internal static class Drawing
             return brush;
         }
 
-        return Fallbacks.TryGetValue(key, out var fallback) ? fallback : Brushes.Gray;
+        return Fallback(key);
     }
+
+    /// <summary>Theme brush for <paramref name="key"/> from the application resources, for drawing outside any control.</summary>
+    public static IBrush Brush(string key)
+    {
+        var app = Application.Current;
+        if (app is not null && app.TryFindResource(key, app.ActualThemeVariant, out var value) && value is IBrush brush)
+        {
+            return brush;
+        }
+
+        return Fallback(key);
+    }
+
+    private static IBrush Fallback(string key) => Fallbacks.TryGetValue(key, out var fallback) ? fallback : Brushes.Gray;
 
     public static FormattedText Text(string text, double size, IBrush brush, FontWeight weight = FontWeight.Normal) =>
         new(

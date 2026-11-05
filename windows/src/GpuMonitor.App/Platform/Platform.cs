@@ -1,4 +1,7 @@
+using Avalonia.Controls;
+using GpuMonitor.App.Notify;
 using GpuMonitor.Core.Diagnostics;
+using GpuMonitor.Core.Logging;
 #if WINDOWS
 using GpuMonitor.App.Platform.Windows;
 #endif
@@ -24,6 +27,18 @@ public static class Platform
         return new RunKeyStartup();
 #else
         return new NullPlatform();
+#endif
+    }
+
+    /// <summary>Windows toasts with the in-app notifier as fallback on Windows; the in-app notifier elsewhere.
+    /// <paramref name="host"/> returns the main window, or null when there is none.</summary>
+    public static INotifier Notifier(AppLog log, Func<Window?> host)
+    {
+#if WINDOWS
+        return new FallbackNotifier(new WindowsToastNotifier(log), new InAppNotifier(host), log);
+#else
+        _ = log;
+        return new InAppNotifier(host);
 #endif
     }
 }
