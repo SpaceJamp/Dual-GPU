@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GpuMonitor.App/GpuMonitor.App.csproj" />
+    <Project Path="src/GpuMonitor.Core/GpuMonitor.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GpuMonitor.App.Tests/GpuMonitor.App.Tests.csproj" />
+    <Project Path="tests/GpuMonitor.Core.Tests/GpuMonitor.Core.Tests.csproj" />
+  </Folder>
+</Solution>
