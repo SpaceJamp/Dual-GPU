@@ -48,7 +48,7 @@ public sealed class SettingsTests : IDisposable
     [Fact]
     public void OutOfRange_ClampsPerField()
     {
-        File.WriteAllText(FilePath, """{"RefreshSeconds": 0, "HeatLimitC": 500, "VramLimitPct": 10}""");
+        File.WriteAllText(FilePath, """{"RefreshSeconds": 0, "HeatLimitC": 500, "VramLimitPct": 10, "LogJson": true}""");
         var lines = new List<LogLine>();
         _log.Line += lines.Add;
         var r = Store().Load();
@@ -56,7 +56,11 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(0.5, r.Settings.RefreshSeconds);
         Assert.Equal(95, r.Settings.HeatLimitC);
         Assert.Equal(50, r.Settings.VramLimitPct);
-        Assert.Equal(3, lines.Count(l => l.Level == LogLevel.Warning));
+        Assert.True(r.Settings.LogJson);
+        var warnings = lines.Where(l => l.Level == LogLevel.Warning).ToList();
+        Assert.Equal(3, warnings.Count);
+        foreach (var f in new[] { "RefreshSeconds", "HeatLimitC", "VramLimitPct" })
+            Assert.Single(warnings, w => w.Message.Contains(f));
     }
 
     [Fact]
@@ -109,6 +113,24 @@ public sealed class SettingsTests : IDisposable
         Assert.True(File.Exists(FilePath + ".bad"));
         Assert.Equal("{not json", File.ReadAllText(FilePath + ".bad"));
         Assert.False(File.Exists(FilePath));
+    }
+
+    [Fact]
+    public void ReadError_DoesNotRenameFile()
+    {
+        File.WriteAllText(FilePath, """{"HeatLimitC": 70}""");
+        var lines = new List<LogLine>();
+        _log.Line += lines.Add;
+        LoadResult r;
+        using (new FileStream(FilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            r = Store().Load();
+        Assert.Equal(SettingsStatus.Invalid, r.Status);
+        Assert.False(string.IsNullOrEmpty(r.Error));
+        Assert.Equal(new AppSettings(), r.Settings);
+        Assert.True(File.Exists(FilePath));
+        Assert.False(File.Exists(FilePath + ".bad"));
+        Assert.Contains(lines, l => l.Level == LogLevel.Warning && l.Source == "settings");
+        Assert.Equal(70, Store().Load().Settings.HeatLimitC);
     }
 
     [Fact]

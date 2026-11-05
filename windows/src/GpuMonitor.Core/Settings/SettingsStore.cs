@@ -16,12 +16,23 @@ public sealed class SettingsStore(string path, AppLog log)
     {
         if (!File.Exists(path)) return new LoadResult(new AppSettings(), SettingsStatus.Missing, null);
 
+        string text;
+        try
+        {
+            text = File.ReadAllText(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.Warn(Source, $"Could not read the settings file, leaving it untouched: {ex.Message}", ex);
+            return new LoadResult(new AppSettings(), SettingsStatus.Invalid, ex.Message);
+        }
+
         JsonDocument doc;
         try
         {
-            doc = JsonDocument.Parse(File.ReadAllText(path));
+            doc = JsonDocument.Parse(text);
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (JsonException ex)
         {
             log.Error(Source, $"Settings file is not valid JSON: {ex.Message}", ex);
             MoveAside();
