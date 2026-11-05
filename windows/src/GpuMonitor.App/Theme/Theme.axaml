@@ -1,0 +1,25 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="Background" Color="#F7F7F8" />
+      <SolidColorBrush x:Key="Surface" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="Text" Color="#1B1B1F" />
+      <SolidColorBrush x:Key="TextDim" Color="#5C5F66" />
+      <SolidColorBrush x:Key="Accent" Color="#1F6FEB" />
+      <SolidColorBrush x:Key="Warn" Color="#C27803" />
+      <SolidColorBrush x:Key="Danger" Color="#C62828" />
+      <SolidColorBrush x:Key="Grid" Color="#DADCE0" />
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="Background" Color="#111214" />
+      <SolidColorBrush x:Key="Surface" Color="#1C1D21" />
+      <SolidColorBrush x:Key="Text" Color="#ECECEE" />
+      <SolidColorBrush x:Key="TextDim" Color="#A3A6AD" />
+      <SolidColorBrush x:Key="Accent" Color="#5B9DFF" />
+      <SolidColorBrush x:Key="Warn" Color="#F5B03D" />
+      <SolidColorBrush x:Key="Danger" Color="#FF6B6B" />
+      <SolidColorBrush x:Key="Grid" Color="#34363C" />
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

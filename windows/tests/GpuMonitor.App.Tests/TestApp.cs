@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Themes.Fluent;
 using GpuMonitor.App.Tests;
 
@@ -10,7 +11,15 @@ namespace GpuMonitor.App.Tests;
 
 public class TestApp : Application
 {
-    public override void Initialize() => Styles.Add(new FluentTheme());
+    private static readonly Uri ThemeUri = new("avares://GpuMonitor/Theme/Theme.axaml");
+
+    public override void Initialize()
+    {
+        // Load the app assembly first so avares:// finds its compiled XAML.
+        _ = typeof(App).Assembly;
+        Resources.MergedDictionaries.Add(new ResourceInclude(ThemeUri) { Source = ThemeUri });
+        Styles.Add(new FluentTheme());
+    }
 
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<TestApp>()
