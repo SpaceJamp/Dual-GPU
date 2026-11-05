@@ -95,4 +95,32 @@ public class ReportRenderTests
         using var doc = JsonDocument.Parse(json);
         Assert.Equal("x\n<user> y", doc.RootElement.GetProperty("facts").GetProperty("nvidia_smi").GetString());
     }
+
+    [Fact]
+    public void Json_RedactsFactErrors()
+    {
+        var f = new FactsBuilder().Build() with
+        {
+            Wmi = Fact<IReadOnlyList<WmiAdapter>>.Fail(@"IOException: Could not find file 'C:\Users\Jeff\x.json'"),
+        };
+        var json = ReportRender.Json(f, Array.Empty<Check>(), redactor: R);
+        Assert.DoesNotContain("Jeff", json);
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(@"error: IOException: Could not find file '<home>\x.json'", doc.RootElement.GetProperty("facts").GetProperty("wmi").GetString());
+    }
+
+    [Fact]
+    public void Json_DuplicateRedactedKeys_AreNumbered()
+    {
+        var f = Dirty("s", "m", "k") with
+        {
+            GpuPreferences = Fact<IReadOnlyDictionary<string, string>>.Of(new Dictionary<string, string>
+            {
+                [@"C:\Users\Jeff"] = "a", [@"c:\users\jeff"] = "b", [@"C:\USERS\JEFF"] = "c",
+            }),
+        };
+        using var doc = JsonDocument.Parse(ReportRender.Json(f, Array.Empty<Check>(), redactor: R));
+        var names = doc.RootElement.GetProperty("facts").GetProperty("gpu_preferences").EnumerateObject().Select(p => p.Name).ToArray();
+        Assert.Equal(new[] { "<home>", "<home> (2)", "<home> (3)" }, names);
+    }
 }

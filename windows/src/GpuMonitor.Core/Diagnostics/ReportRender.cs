@@ -218,7 +218,7 @@ public static class ReportRender
 
         public override void Write(Utf8JsonWriter writer, Fact<T> value, JsonSerializerOptions options)
         {
-            if (!value.Ok) writer.WriteStringValue(value.Error);
+            if (!value.Ok) JsonSerializer.Serialize(writer, value.Error, typeof(string), options);
             else JsonSerializer.Serialize(writer, value.Value, typeof(T), options);
         }
     }
@@ -247,9 +247,12 @@ public static class ReportRender
         public override void Write(Utf8JsonWriter writer, IReadOnlyDictionary<string, TValue> value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var kv in value)
             {
-                writer.WritePropertyName(r.Apply(kv.Key));
+                var name = r.Apply(kv.Key);
+                for (var n = 2; !seen.Add(name); n++) name = $"{r.Apply(kv.Key)} ({n})";
+                writer.WritePropertyName(name);
                 JsonSerializer.Serialize(writer, kv.Value, typeof(TValue), options);
             }
             writer.WriteEndObject();
