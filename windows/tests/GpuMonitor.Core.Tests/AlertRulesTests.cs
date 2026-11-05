@@ -82,7 +82,7 @@ public class AlertRulesTests
     {
         var rules = new AlertRules();
         var r = R(A, Field<int>.Fail(NvmlReturn.NotSupported));
-        Assert.Empty(Poll(rules, T0, r, R(B, 40)));
+        Assert.Empty(rules.Evaluate(new[] { A, B }, new[] { r, R(B, Field<int>.Fail(NvmlReturn.NotSupported)) }, T0, new AppSettings { HeatLimitC = 0 }));
     }
 
     [Fact]
@@ -126,15 +126,15 @@ public class AlertRulesTests
     {
         var rules = new AlertRules();
         Poll(rules, T0, R(A, 40), R(B, 40));
-        Assert.Empty(Poll(rules, T0.AddHours(3), R(A, 40), R(B, 40)));
-    }
-
-    [Fact]
-    public void LongGapAfterSleep_WithoutReadings_DoesNotFireMissing()
-    {
-        var rules = new AlertRules();
-        Poll(rules, T0, R(A, 40), R(B, 40));
-        Assert.Empty(Poll(rules, T0.AddHours(3), R(A, 40)));
+        var wake = T0.AddHours(3);
+        Assert.Empty(Poll(rules, wake, R(A, 40)));
+        Assert.Empty(Poll(rules, wake.AddSeconds(1), R(A, 40)));
+        Assert.Empty(Poll(rules, wake.AddSeconds(2), R(A, 40)));
+        Assert.Empty(Poll(rules, wake.AddSeconds(3), R(A, 40)));
+        Assert.Empty(Poll(rules, wake.AddSeconds(4), R(A, 40)));
+        var m = Assert.Single(Poll(rules, wake.AddSeconds(5), R(A, 40)));
+        Assert.Equal(AlertKind.CardMissing, m.Kind);
+        Assert.Equal(B.BusId, m.BusId);
     }
 
     [Fact]

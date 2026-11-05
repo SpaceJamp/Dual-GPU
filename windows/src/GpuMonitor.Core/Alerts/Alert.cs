@@ -31,7 +31,7 @@ public sealed record Alert(AlertKind Kind, string BusId, string CardName, double
             return Kind switch
             {
                 AlertKind.Hot => string.Create(inv, $"{v:0}°C, limit {Limit}°C"),
-                AlertKind.HotCleared => string.Create(inv, $"{v:0}°C, below {Limit - 5}°C"),
+                AlertKind.HotCleared => string.Create(inv, $"{v:0}°C, below {Limit - AlertRules.Margin}°C"),
                 AlertKind.LowVram => string.Create(inv, $"{v:0}% used, limit {Limit}%"),
                 AlertKind.LowVramCleared => string.Create(inv, $"{v:0}% used"),
                 AlertKind.CardMissing => "No reading for 5 seconds",

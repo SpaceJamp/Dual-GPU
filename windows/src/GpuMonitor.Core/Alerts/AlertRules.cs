@@ -8,7 +8,7 @@ namespace GpuMonitor.Core.Alerts;
 /// <summary>Holds per-card alert state. Not thread-safe: call from one thread.</summary>
 public sealed class AlertRules
 {
-    private const int Margin = 5;
+    internal const int Margin = 5;
     private const int HistoryMax = 200;
     private static readonly TimeSpan MissingAfter = TimeSpan.FromSeconds(5);
 
