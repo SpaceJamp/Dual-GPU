@@ -164,6 +164,22 @@ public class NvmlReaderTests
     }
 
     [Fact]
+    public void Cards_IsImmutableSnapshot()
+    {
+        var (fake, reader, _) = Make();
+        fake.Add(BusA, "A");
+        reader.Poll(T0);
+        var old = reader.Cards;
+        Assert.Single(old);
+
+        fake.Add(BusB, "B");
+        reader.Poll(T0.AddSeconds(1));
+
+        Assert.Single(old);
+        Assert.Equal(2, reader.Cards.Count);
+    }
+
+    [Fact]
     public void Timings_RecordedPerCall()
     {
         var (fake, reader, _) = Make();

@@ -10,6 +10,7 @@ public sealed class NvmlReader : ICardReader
     private readonly INvml _nvml;
     private readonly AppLog _log;
     private readonly List<Card> _cards = new();
+    private volatile IReadOnlyList<Card> _snapshot = Array.Empty<Card>();
     private readonly HashSet<(string BusId, string Field)> _failing = new();
 
     public NvmlReader(INvml nvml, AppLog log)
@@ -21,7 +22,7 @@ public sealed class NvmlReader : ICardReader
 
     public NvmlReturn InitCode { get; }
 
-    public IReadOnlyList<Card> Cards => _cards;
+    public IReadOnlyList<Card> Cards => _snapshot;
 
     public CallTimings Timings { get; } = new();
 
@@ -71,6 +72,7 @@ public sealed class NvmlReader : ICardReader
 
             readings.Add(ReadCard(card, handle, now));
         }
+        _snapshot = _cards.ToArray();
         return readings;
     }
 
