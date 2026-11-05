@@ -135,8 +135,11 @@ notifications) sit behind interfaces and are implemented in
 - Notifications: Avalonia has no built-in Windows toast API (observation:
   its TrayIcon docs cover icon, tooltip and menu only). `INotifier` has two
   implementations:
-  - `WindowsToastNotifier`: native Windows toast for an unpackaged app.
-    How it registers with Windows is settled in the build plan.
+  - `WindowsToastNotifier`: native Windows toast through the built-in
+    `Windows.UI.Notifications` API, with no extra package. The app registers
+    its ID under `HKCU\Software\Classes\AppUserModelId\SpaceJamp.GpuMonitor`.
+    The Microsoft.Toolkit.Uwp.Notifications package is not used: it pulls in
+    System.Drawing.Common 4.7.0, flagged critical (GHSA-rxg9-xrhp-64gj).
   - `InAppNotifier`: an Avalonia in-window notification. Used if toasts
     fail, and logged as a warning.
 - Running on Linux is only for tests here. The shipped app targets
