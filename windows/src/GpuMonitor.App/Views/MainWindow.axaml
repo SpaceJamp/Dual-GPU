@@ -1,0 +1,139 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:GpuMonitor.App.ViewModels"
+        xmlns:controls="using:GpuMonitor.App.Controls"
+        x:Class="GpuMonitor.App.Views.MainWindow"
+        x:Name="Root"
+        x:DataType="vm:MainViewModel"
+        Title="GPU Monitor"
+        Width="820" Height="620"
+        Background="{DynamicResource Background}">
+  <DockPanel>
+    <TextBlock x:Name="BannerText"
+               DockPanel.Dock="Top"
+               Margin="12,8"
+               TextWrapping="Wrap"
+               Foreground="{DynamicResource Danger}"
+               Text="{Binding Banner}"
+               IsVisible="{Binding Banner, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+    <TabControl>
+      <TabItem Header="Cards">
+        <ScrollViewer>
+          <ItemsControl ItemsSource="{Binding Cards}" Margin="8">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <UniformGrid Columns="2" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:CardViewModel">
+                <controls:CardPanel Margin="6"
+                                    Card="{Binding}"
+                                    HeatLimitC="{Binding #Root.((vm:MainViewModel)DataContext).HeatLimitC}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Diagnostics">
+        <ScrollViewer>
+          <StackPanel Margin="12" Spacing="8" DataContext="{Binding Diagnostics}" x:DataType="vm:DiagnosticsViewModel">
+            <WrapPanel>
+              <Button Margin="0,0,6,6" Content="Create report" Command="{Binding CreateReportCommand}" />
+              <Button Margin="0,0,6,6" Content="Copy report" Command="{Binding CopyReportCommand}" />
+              <Button Margin="0,0,6,6" Content="Save report" Click="OnSaveReport" />
+              <Button Margin="0,0,6,6" Content="Open log folder" Command="{Binding OpenLogFolderCommand}" />
+              <Button Margin="0,0,6,6" Content="{Binding RecordButtonText}" Command="{Binding ToggleRecordingCommand}" />
+            </WrapPanel>
+            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="{DynamicResource TextDim}" />
+
+            <TextBlock Text="Card fields" FontWeight="SemiBold" />
+            <ItemsControl ItemsSource="{Binding Cards}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CardViewModel">
+                  <StackPanel Margin="0,0,0,8">
+                    <TextBlock>
+                      <Run Text="{Binding Name}" FontWeight="SemiBold" />
+                      <Run Text="  " />
+                      <Run Text="{Binding BusId}" Foreground="{DynamicResource TextDim}" />
+                    </TextBlock>
+                    <ItemsControl ItemsSource="{Binding Fields}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:FieldRow">
+                          <Grid ColumnDefinitions="160,160,*">
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" />
+                            <TextBlock Grid.Column="1" Text="{Binding Value}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Code}" Foreground="{DynamicResource TextDim}" />
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Text="Timings (from the last report)" FontWeight="SemiBold" />
+            <ItemsControl ItemsSource="{Binding Timings}" />
+
+            <TextBlock Text="GPU events (from the last report)" FontWeight="SemiBold" />
+            <ItemsControl ItemsSource="{Binding Events}" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="Log" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <ComboBox ItemsSource="{Binding LogLevels}" SelectedItem="{Binding MinLevel}" MinWidth="120" />
+            </StackPanel>
+            <ListBox ItemsSource="{Binding LogLines}" Height="240" FontFamily="Consolas, Menlo, monospace" FontSize="12" />
+
+            <TextBlock Text="Report" FontWeight="SemiBold" />
+            <TextBox Text="{Binding ReportText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                     Height="200" FontFamily="Consolas, Menlo, monospace" FontSize="12" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="Settings">
+        <ScrollViewer>
+          <StackPanel Margin="12" Spacing="10" DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel">
+            <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
+              <TextBlock Grid.Row="0" Text="Refresh (seconds, 0.5 to 5)" VerticalAlignment="Center" />
+              <NumericUpDown Grid.Row="0" Grid.Column="1" x:Name="RefreshEditor" Width="160" HorizontalAlignment="Left"
+                             Minimum="0.5" Maximum="5" Increment="0.5" FormatString="0.0"
+                             Value="{Binding RefreshSeconds}" />
+
+              <TextBlock Grid.Row="1" Text="Heat limit (°C, 50 to 95)" VerticalAlignment="Center" />
+              <NumericUpDown Grid.Row="1" Grid.Column="1" x:Name="HeatEditor" Width="160" HorizontalAlignment="Left"
+                             Minimum="50" Maximum="95" Increment="1" FormatString="0"
+                             Value="{Binding HeatLimitC}" />
+
+              <TextBlock Grid.Row="2" Text="VRAM limit (%, 50 to 99)" VerticalAlignment="Center" />
+              <NumericUpDown Grid.Row="2" Grid.Column="1" Width="160" HorizontalAlignment="Left"
+                             Minimum="50" Maximum="99" Increment="1" FormatString="0"
+                             Value="{Binding VramLimitPct}" />
+
+              <TextBlock Grid.Row="3" Text="Log level" VerticalAlignment="Center" />
+              <ComboBox Grid.Row="3" Grid.Column="1" MinWidth="160"
+                        ItemsSource="{Binding LogLevels}" SelectedItem="{Binding LogLevel}" />
+
+              <TextBlock Grid.Row="4" Text="Log as JSON" VerticalAlignment="Center" />
+              <CheckBox Grid.Row="4" Grid.Column="1" IsChecked="{Binding LogJson}" />
+
+              <TextBlock Grid.Row="5" Text="Start with Windows" VerticalAlignment="Center" />
+              <CheckBox Grid.Row="5" Grid.Column="1" IsChecked="{Binding StartWithWindows}" />
+
+              <TextBlock Grid.Row="6" Text="Expected display card" VerticalAlignment="Center" />
+              <TextBox Grid.Row="6" Grid.Column="1" Width="260" HorizontalAlignment="Left"
+                       Text="{Binding ExpectedDisplayCard}" />
+            </Grid>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <Button Content="Save" Command="{Binding SaveCommand}" />
+              <TextBlock Text="{Binding Status}" VerticalAlignment="Center" Foreground="{DynamicResource TextDim}" />
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>

@@ -15,7 +15,9 @@ public abstract class ObservableBase : INotifyPropertyChanged
         }
 
         field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        OnPropertyChanged(name);
         return true;
     }
+
+    protected void OnPropertyChanged(string? name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

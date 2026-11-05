@@ -7,6 +7,9 @@ namespace GpuMonitor.App;
 
 public partial class App : Application
 {
+    /// <summary>True once the user chose Exit. Until then, closing the main window only hides it.</summary>
+    public static bool IsExiting { get; set; }
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
