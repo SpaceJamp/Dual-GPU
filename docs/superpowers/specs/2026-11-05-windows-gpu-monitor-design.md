@@ -34,7 +34,7 @@ Parts 2 and 3 reuse the card readings from Part 1.
 
 | Topic | Decision |
 |---|---|
-| Language and UI | C#, WPF |
+| Language and UI | C#, Avalonia 12. Card panels and graphs are the app's own controls, drawn directly. No third-party control or chart libraries. |
 | Runtime | .NET 10 (LTS, supported to November 2028). .NET 8 support ends 2026-11-10. |
 | Location | `windows/` in this repo. The Linux `gpubalance` stays unchanged. |
 | How the user sees it | Tray icon and window. No in-game overlay. |
@@ -43,7 +43,7 @@ Parts 2 and 3 reuse the card readings from Part 1.
 | Start with Windows | Optional checkbox, off by default |
 | Data source | NVML (`nvml.dll`, installed with the NVIDIA driver) |
 | Card identity | PCI bus ID. Both cards are NVIDIA, so vendor or name alone is ambiguous. |
-| Packaging | Self-contained single-file `GpuMonitor.exe` for win-x64, shipped as a zip |
+| Packaging | Self-contained, trimmed, single-file `GpuMonitor.exe` for win-x64, shipped as a zip |
 | CI | GitHub Actions on a Windows runner, triggered by changes under `windows/` |
 
 ## Out of scope for Part 1
@@ -63,7 +63,9 @@ windows/
   Directory.Build.props        shared version and settings
   src/
     GpuMonitor.Core/           net10.0, no UI code, builds on Linux
-    GpuMonitor.App/            net10.0-windows, WPF
+    GpuMonitor.App/            net10.0, Avalonia 12
+      Controls/                the app's own drawn controls
+      Platform/Windows/        Windows-only code behind interfaces
   tests/
     GpuMonitor.Core.Tests/     xUnit, net10.0
   TESTING.md                   manual checklist for the user's PC
@@ -75,9 +77,10 @@ windows/
 
 ### GpuMonitor.Core
 
-No WPF and no Windows-only APIs at compile time, so it builds and its tests
-run on Linux and Windows. Windows-only calls (WMI, Event Log, registry) sit
-behind interfaces and are implemented in the App project.
+No UI code and no Windows-only APIs at compile time, so it builds and its tests
+run on Linux and Windows. Windows-only calls (WMI, Event Log, registry,
+notifications) sit behind interfaces and are implemented in
+`GpuMonitor.App/Platform/Windows`.
 
 - `Nvml`: P/Invoke bindings to `nvml.dll`. Wraps each call, maps return
   codes to names (for example `NVML_ERROR_GPU_IS_LOST`) and never throws for
@@ -115,11 +118,30 @@ behind interfaces and are implemented in the App project.
 - Main window, one tab each:
   - Cards: one panel per card, side by side. Name, a "Display" marker on the
     card driving a monitor, current numbers, and 60-second graphs for load
-    and temperature. Graphs are drawn with WPF shapes, no chart library.
+    and temperature.
   - Diagnostics: see below.
   - Settings: limits, refresh rate, log level and format, start with
     Windows.
-- Notifications: Windows toast notifications from the tray icon.
+- Own controls in `Controls/`, drawn with Avalonia's `DrawingContext`:
+  - `CardPanel`: name, Display marker, numbers, gray "No reading since"
+    state.
+  - `LineGraph`: 60-second line graph with limit line. Redraws only when a
+    new reading arrives.
+  - `Meter`: horizontal bar for load, VRAM and power against its max.
+  - Colors come from one theme file with light and dark variants that
+    follow the Windows setting.
+- Tray: Avalonia's built-in `TrayIcon` with its menu. The temperature
+  number on the icon is drawn into a bitmap each poll.
+- Notifications: Avalonia has no built-in Windows toast API (observation:
+  its TrayIcon docs cover icon, tooltip and menu only). `INotifier` has two
+  implementations:
+  - `WindowsToastNotifier`: native Windows toast for an unpackaged app.
+    How it registers with Windows is settled in the build plan.
+  - `InAppNotifier`: an Avalonia in-window notification. Used if toasts
+    fail, and logged as a warning.
+- Running on Linux is only for tests here. The shipped app targets
+  Windows. Startup, WMI, Event Log and toasts report "not available" off
+  Windows.
 - Start with Windows: adds or removes a value under
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. User only, no admin.
 - Closing the window hides it to the tray. Exit in the tray menu quits.
@@ -134,7 +156,8 @@ behind interfaces and are implemented in the App project.
 3. `AlertRules` compares the readings with the limits and returns alerts to
    send.
 4. `History` stores the readings. `Recorder` writes them if recording.
-5. The UI thread updates panels, graphs and the tray icon, and shows toasts.
+5. The UI thread updates panels, graphs and the tray icon, and sends
+   notifications.
 
 A poll that is still running when the next one is due is skipped and
 logged, so polls never pile up.
@@ -260,7 +283,8 @@ form (`C:\Users\name`) and JSON-escaped form (`C:\\Users\\name`).
 
 ## Install
 
-- `dotnet publish` self-contained, single file, win-x64. Shipped as
+- `dotnet publish` self-contained, trimmed, single file, win-x64. Bindings
+  are compiled (`x:CompileBindings`) so trimming does not break them. Shipped as
   `GpuMonitor-<version>-win-x64.zip`.
 - No installer. Removing the app means deleting the folder plus
   `%APPDATA%\GpuMonitor` and `%LOCALAPPDATA%\GpuMonitor`.
@@ -289,6 +313,13 @@ Automated (`GpuMonitor.Core.Tests`, run in CI, also on Linux):
 - Each diagnostic check: given fake facts, returns the right level and hint.
 - `Log`: rotation at 1 MB with 3 backups, run ID on every line, JSON format.
 - `Recorder`: CSV header and rows.
+
+UI, with Avalonia headless tests (run in CI, also on Linux):
+
+- `CardPanel` shows values, blanks for failed fields, and the gray state.
+- `LineGraph` keeps 60 points and draws the limit line.
+- Window opens, tabs switch, settings changes save.
+- Closing the window hides it; Exit quits.
 
 Manual (`windows/TESTING.md`, on the user's PC):
 
