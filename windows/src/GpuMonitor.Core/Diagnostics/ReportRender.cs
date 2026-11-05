@@ -8,20 +8,35 @@ namespace GpuMonitor.Core.Diagnostics;
 
 public static class ReportRender
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private static readonly JsonSerializerOptions PlainOptions = Options(null);
+
+    private static JsonSerializerOptions Options(Redactor? r)
     {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        Converters = { new FactConverterFactory(), new TimeSpanConverter(), new JsonStringEnumConverter() },
-    };
+        var o = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
+        if (r is not null)
+        {
+            o.Converters.Add(new RedactingStringConverter(r));
+            o.Converters.Add(new RedactingDictionaryFactory(r));
+        }
+        o.Converters.Add(new FactConverterFactory());
+        o.Converters.Add(new TimeSpanConverter());
+        o.Converters.Add(new JsonStringEnumConverter());
+        return o;
+    }
 
     public static int ExitCode(IReadOnlyList<Check> checks) => checks.Any(c => c.Level == CheckLevel.Fail) ? 1 : 0;
 
     public static string Json(Facts f, IReadOnlyList<Check> checks, bool redact = true, Redactor? redactor = null)
     {
-        var json = JsonSerializer.Serialize(new { checks, facts = f }, JsonOptions);
-        return Finish(json, redact, redactor);
+        // Redaction happens per string value and dictionary key, never on the serialized text,
+        // so JSON escapes such as \\n and \\t cannot hide a name from the word-boundary rules.
+        var r = redact ? redactor ?? Redactor.ForCurrentUser() : null;
+        return JsonSerializer.Serialize(new { checks, facts = f }, Options(r));
     }
 
     public static string Text(Facts f, IReadOnlyList<Check> checks, bool redact = true, Redactor? redactor = null)
@@ -131,7 +146,7 @@ public static class ReportRender
         {
             var st = f.State;
             Line(s, "settings_status", st.SettingsStatus.ToString());
-            Line(s, "settings", JsonSerializer.Serialize(st.Settings, JsonOptions));
+            Line(s, "settings", JsonSerializer.Serialize(st.Settings, PlainOptions));
             Line(s, "startup_value", st.StartupValue ?? "none");
             Line(s, "log_writable", st.LogWritable ? "true" : "false");
             s.Append("alerts:").Append(st.Alerts.Count == 0 ? " none" : "").Append('\n');
@@ -205,6 +220,39 @@ public static class ReportRender
         {
             if (!value.Ok) writer.WriteStringValue(value.Error);
             else JsonSerializer.Serialize(writer, value.Value, typeof(T), options);
+        }
+    }
+
+    private sealed class RedactingStringConverter(Redactor r) : JsonConverter<string>
+    {
+        public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.GetString();
+        public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options) =>
+            writer.WriteStringValue(r.Apply(value));
+    }
+
+    private sealed class RedactingDictionaryFactory(Redactor r) : JsonConverterFactory
+    {
+        public override bool CanConvert(Type t) => t.IsGenericType
+            && t.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>) && t.GetGenericArguments()[0] == typeof(string);
+
+        public override JsonConverter CreateConverter(Type t, JsonSerializerOptions options) =>
+            (JsonConverter)Activator.CreateInstance(typeof(DictConverter<>).MakeGenericType(t.GetGenericArguments()[1]), r)!;
+    }
+
+    private sealed class DictConverter<TValue>(Redactor r) : JsonConverter<IReadOnlyDictionary<string, TValue>>
+    {
+        public override IReadOnlyDictionary<string, TValue> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, IReadOnlyDictionary<string, TValue> value, JsonSerializerOptions options)
+        {
+            writer.WriteStartObject();
+            foreach (var kv in value)
+            {
+                writer.WritePropertyName(r.Apply(kv.Key));
+                JsonSerializer.Serialize(writer, kv.Value, typeof(TValue), options);
+            }
+            writer.WriteEndObject();
         }
     }
 }

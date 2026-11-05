@@ -60,4 +60,39 @@ public class ReportRenderTests
         Assert.Equal(1, ReportRender.ExitCode(new[] { new Check(CheckLevel.Warn, "a", "", ""), new Check(CheckLevel.Fail, "b", "", "") }));
         Assert.Equal(0, ReportRender.ExitCode(new[] { new Check(CheckLevel.Warn, "a", "", "") }));
     }
+
+    private static Facts Dirty(string smi, string eventMsg, string prefKey)
+    {
+        var b = new FactsBuilder();
+        b.EventLog = Fact<IReadOnlyList<GpuEvent>>.Of(new[] { new GpuEvent(DateTimeOffset.UnixEpoch, "p", 1, "Error", eventMsg) });
+        var f = b.Build();
+        return f with
+        {
+            NvidiaSmi = Fact<string?>.Of(smi),
+            GpuPreferences = Fact<IReadOnlyDictionary<string, string>>.Of(new Dictionary<string, string> { [prefKey] = "GpuPreference=2;" }),
+        };
+    }
+
+    [Fact]
+    public void Json_RedactsHomeInNvidiaSmiAndEventLog()
+    {
+        var f = Dirty(@"C:\Users\Jeff\AppData\x.exe", "Account Name:\t\tJeff", @"C:\Users\Jeff\game.exe");
+        var json = ReportRender.Json(f, Array.Empty<Check>(), redactor: R);
+        Assert.DoesNotContain("Jeff", json);
+        Assert.DoesNotContain(@"Users\\Jeff", json);
+        Assert.Contains("<home>", json);
+        Assert.Contains("<user>", json);
+        using var doc = JsonDocument.Parse(json);
+        var facts = doc.RootElement.GetProperty("facts");
+        Assert.Equal("Account Name:\t\t<user>", facts.GetProperty("event_log")[0].GetProperty("message").GetString());
+        Assert.Equal(@"<home>\game.exe", facts.GetProperty("gpu_preferences").EnumerateObject().Single().Name);
+    }
+
+    [Fact]
+    public void Json_RedactsNameAfterNewline()
+    {
+        var json = ReportRender.Json(Dirty("x\nJeff y", "m", "k"), Array.Empty<Check>(), redactor: R);
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal("x\n<user> y", doc.RootElement.GetProperty("facts").GetProperty("nvidia_smi").GetString());
+    }
 }

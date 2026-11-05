@@ -37,4 +37,11 @@ public class RedactTests
         var r = new Redactor("Jöns", "PC", @"C:\Users\Jöns");
         Assert.Equal(@"<home>\x and <user> said hi; Jönsson stays", r.Apply(@"C:\Users\Jöns\x and Jöns said hi; Jönsson stays"));
     }
+
+    [Fact]
+    public void UserName_WithRegexMetaChars_IsEscaped()
+    {
+        var r = new Redactor("a.b", "PC", @"C:\Users\a.b");
+        Assert.Equal("axb and <user>", r.Apply("axb and a.b"));
+    }
 }
