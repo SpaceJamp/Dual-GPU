@@ -11,6 +11,7 @@ namespace GpuMonitor.Core.Poll;
 public sealed class Poller : IDisposable
 {
     private const string Source = "poll";
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan SlowPoll = TimeSpan.FromMilliseconds(100);
 
     private readonly ICardReader _reader;
@@ -20,7 +21,11 @@ public sealed class Poller : IDisposable
     private readonly AppLog _log;
     private readonly TimeProvider _clock;
     private readonly CancellationTokenSource _cts = new();
+    private readonly object _gate = new();
     private Task? _loop;
+    private Task? _inFlight;
+    private volatile bool _stopping;
+    private int _disposed;
     private int _running;
     private int _skipped;
 
@@ -40,45 +45,62 @@ public sealed class Poller : IDisposable
 
     public void Start()
     {
-        if (_loop is not null) return;
-        _loop = Task.Run(() => RunLoop(_cts.Token));
+        lock (_gate)
+        {
+            if (_loop is not null || _stopping) return;
+            var ct = _cts.Token;
+            _loop = Task.Run(() => RunLoop(ct));
+        }
     }
 
     private async Task RunLoop(CancellationToken ct)
     {
-        double seconds = _settings().RefreshSeconds;
-        var timer = new PeriodicTimer(TimeSpan.FromSeconds(seconds), _clock);
-        try
+        while (!ct.IsCancellationRequested)
         {
-            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+            PeriodicTimer? timer = null;
+            try
             {
-                Tick();
-                double now = _settings().RefreshSeconds;
-                if (now != seconds)
+                double seconds = _settings().RefreshSeconds;
+                timer = new PeriodicTimer(TimeSpan.FromSeconds(seconds), _clock);
+                while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
                 {
-                    timer.Dispose();
-                    seconds = now;
-                    timer = new PeriodicTimer(TimeSpan.FromSeconds(seconds), _clock);
+                    Tick();
+                    if (_settings().RefreshSeconds != seconds) break;
                 }
             }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex)
+            {
+                _log.Error(Source, "poll loop failed", ex);
+                try { await Task.Delay(RetryDelay, ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
+            }
+            finally { timer?.Dispose(); }
         }
-        catch (OperationCanceledException) { }
-        finally { timer.Dispose(); }
     }
 
     internal bool Tick()
     {
+        if (_stopping) return false;
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
         {
             Interlocked.Increment(ref _skipped);
             _log.Debug(Source, "poll skipped: previous poll still running");
             return false;
         }
-        Task.Run(() =>
+        lock (_gate)
         {
-            try { PollOnce(); }
-            finally { Volatile.Write(ref _running, 0); }
-        });
+            if (_stopping)
+            {
+                Volatile.Write(ref _running, 0);
+                return false;
+            }
+            _inFlight = Task.Run(() =>
+            {
+                try { if (!_stopping) PollOnce(); }
+                finally { Volatile.Write(ref _running, 0); }
+            });
+        }
         return true;
     }
 
@@ -103,6 +125,7 @@ public sealed class Poller : IDisposable
             return new PollResult(_clock.GetUtcNow(), Array.Empty<Card>(), Array.Empty<Reading>(), Array.Empty<Alert>(), TimeSpan.Zero);
         }
 
+        if (_stopping) return result;
         try { Polled?.Invoke(result); }
         catch (Exception ex) { _log.Error(Source, "Polled subscriber failed", ex); }
         return result;
@@ -119,9 +142,17 @@ public sealed class Poller : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Task?[] pending;
+        lock (_gate)
+        {
+            _stopping = true;
+            pending = new[] { _loop, _inFlight };
+        }
         _cts.Cancel();
-        try { _loop?.Wait(TimeSpan.FromSeconds(2)); }
+        bool finished = true;
+        try { finished = Task.WaitAll(pending.OfType<Task>().ToArray(), TimeSpan.FromSeconds(2)); }
         catch (AggregateException) { }
-        _cts.Dispose();
+        if (finished) _cts.Dispose();
     }
 }
