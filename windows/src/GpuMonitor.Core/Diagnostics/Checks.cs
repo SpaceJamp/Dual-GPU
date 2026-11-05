@@ -21,6 +21,9 @@ public static class Checks
     private const string ThrottleHint = "Thermal throttling means the card is too hot. Power cap means it hit its power limit, which is normal under full load.";
     private const string DriverErrorsHint = "Driver crashes are often caused by unstable overclocks, power supply limits or old drivers. Remove overclocks and update the driver.";
     private const string SettingsHint = "Settings were reset to defaults. The bad file was kept as settings.json.bad.";
+    private const string SettingsMissingHint = "No settings file yet. Defaults are in use until you save settings.";
+    private const string WmiUnavailableHint = "Check that the Windows Management Instrumentation service is running.";
+    private const string EventLogUnavailableHint = "Check that the Windows Event Log service is running.";
     private const string LogWritableHint = @"Check that %LOCALAPPDATA%\GpuMonitor\logs exists and is not read-only.";
     private const string PollTimeHint = "NVML is slow to answer. Check the driver and the per-call timings in this report.";
 
@@ -53,7 +56,7 @@ public static class Checks
     private static Check WmiMatch(Facts f)
     {
         if (!f.Wmi.Ok || f.Wmi.Value is not { Count: > 0 } list)
-            return new(CheckLevel.Info, "wmi-match", "Windows adapter list not available", "");
+            return new(CheckLevel.Info, "wmi-match", "Windows adapter list not available", WmiUnavailableHint);
         var nvidia = list.Count(a => a.Name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase));
         return nvidia == f.Cards.Count
             ? Pass("wmi-match", $"Windows and NVML both see {nvidia} NVIDIA cards")
@@ -125,7 +128,7 @@ public static class Checks
     private static Check DriverErrors(Facts f)
     {
         if (!f.EventLog.Ok || f.EventLog.Value is not { } events)
-            return new(CheckLevel.Info, "driver-errors", "Event log not available", "");
+            return new(CheckLevel.Info, "driver-errors", "Event log not available", EventLogUnavailableHint);
         if (events.Count == 0) return Pass("driver-errors", "No driver errors in the last 7 days");
         var newest = events.Max(e => e.At);
         var time = newest.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
@@ -136,7 +139,7 @@ public static class Checks
     private static Check Settings(Facts f) => f.State.SettingsStatus switch
     {
         SettingsStatus.Loaded => Pass("settings", "Settings loaded"),
-        SettingsStatus.Missing => new(CheckLevel.Info, "settings", "No settings file, using defaults", SettingsHint),
+        SettingsStatus.Missing => new(CheckLevel.Info, "settings", "No settings file, using defaults", SettingsMissingHint),
         _ => new(CheckLevel.Warn, "settings", "Settings file was invalid and was reset", SettingsHint),
     };
 

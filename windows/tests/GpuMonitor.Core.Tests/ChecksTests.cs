@@ -48,7 +48,7 @@ public class ChecksTests
         var c = Get(b, "card-count");
         Assert.Equal(CheckLevel.Fail, c.Level);
         Assert.Equal("1 of 2 expected cards found", c.Message);
-        Assert.StartsWith("Check that both cards show in Device Manager", c.Hint);
+        Assert.Equal("Check that both cards show in Device Manager under Display adapters. Reseat the card or its power cables if one is missing.", c.Hint);
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class ChecksTests
         var b = new FactsBuilder { Wmi = Fact<IReadOnlyList<WmiAdapter>>.Of(new[] { new WmiAdapter("nvidia geforce", "1", "p", "OK") }) };
         var c = Get(b, "wmi-match");
         Assert.Equal(CheckLevel.Warn, c.Level);
-        Assert.StartsWith("Windows and the NVIDIA driver disagree", c.Hint);
+        Assert.Equal("Windows and the NVIDIA driver disagree about the cards. Restart, then reinstall the driver with a clean install.", c.Hint);
     }
 
     [Fact]
@@ -75,6 +75,7 @@ public class ChecksTests
         var c = Get(b, "wmi-match");
         Assert.Equal(CheckLevel.Info, c.Level);
         Assert.Equal("Windows adapter list not available", c.Message);
+        Assert.Equal("Check that the Windows Management Instrumentation service is running.", c.Hint);
         b.Wmi = Fact<IReadOnlyList<WmiAdapter>>.Of(Array.Empty<WmiAdapter>());
         Assert.Equal(CheckLevel.Info, Get(b, "wmi-match").Level);
     }
@@ -122,7 +123,7 @@ public class ChecksTests
         var c = Get(b, "pcie-width");
         Assert.Equal(CheckLevel.Warn, c.Level);
         Assert.Equal("NVIDIA GeForce RTX 4070 Ti SUPER: x8 of x16", c.Message);
-        Assert.StartsWith("Run a game or load first", c.Hint);
+        Assert.Equal("Run a game or load first: some boards drop lanes at idle. If it stays low, check the slot and BIOS lane settings.", c.Hint);
     }
 
     [Fact]
@@ -148,7 +149,7 @@ public class ChecksTests
         var c = Get(b, "temp-headroom");
         Assert.Equal(CheckLevel.Warn, c.Level);
         Assert.Contains(FactsBuilder.Card5080, c.Message);
-        Assert.StartsWith("Improve airflow", c.Hint);
+        Assert.Equal("Improve airflow or lower the power limit. The card will slow itself down at its slowdown limit.", c.Hint);
     }
 
     [Fact]
@@ -179,7 +180,7 @@ public class ChecksTests
         var c = Get(b, "throttle");
         Assert.Equal(CheckLevel.Warn, c.Level);
         Assert.Contains(FactsBuilder.Card5080, c.Message);
-        Assert.StartsWith("Thermal throttling means", c.Hint);
+        Assert.Equal("Thermal throttling means the card is too hot. Power cap means it hit its power limit, which is normal under full load.", c.Hint);
     }
 
     [Fact]
@@ -231,7 +232,7 @@ public class ChecksTests
         var c = Get(b, "driver-errors");
         Assert.Equal(CheckLevel.Warn, c.Level);
         Assert.Equal("1 driver error(s) in the last 7 days, newest 2026-11-03 14:05", c.Message);
-        Assert.StartsWith("Driver crashes are often caused", c.Hint);
+        Assert.Equal("Driver crashes are often caused by unstable overclocks, power supply limits or old drivers. Remove overclocks and update the driver.", c.Hint);
     }
 
     [Fact]
@@ -241,6 +242,7 @@ public class ChecksTests
         var c = Get(b, "driver-errors");
         Assert.Equal(CheckLevel.Info, c.Level);
         Assert.Equal("Event log not available", c.Message);
+        Assert.Equal("Check that the Windows Event Log service is running.", c.Hint);
     }
 
     [Fact]
@@ -248,12 +250,16 @@ public class ChecksTests
     {
         var c = Get(new FactsBuilder { SettingsStatus = SettingsStatus.Missing }, "settings");
         Assert.Equal(CheckLevel.Info, c.Level);
-        Assert.StartsWith("Settings were reset to defaults", c.Hint);
+        Assert.Equal("No settings file yet. Defaults are in use until you save settings.", c.Hint);
     }
 
     [Fact]
-    public void Settings_Invalid_Warn() =>
-        Assert.Equal(CheckLevel.Warn, Get(new FactsBuilder { SettingsStatus = SettingsStatus.Invalid }, "settings").Level);
+    public void Settings_Invalid_Warn()
+    {
+        var c = Get(new FactsBuilder { SettingsStatus = SettingsStatus.Invalid }, "settings");
+        Assert.Equal(CheckLevel.Warn, c.Level);
+        Assert.Equal("Settings were reset to defaults. The bad file was kept as settings.json.bad.", c.Hint);
+    }
 
     [Fact]
     public void LogWritable_False_Warn()
@@ -269,7 +275,7 @@ public class ChecksTests
         var b = new FactsBuilder { Timings = new() { ["a"] = new(1, 1, 100, 1, 1), ["b"] = new(1, 1, 50, 1, 1) } };
         var c = Get(b, "poll-time");
         Assert.Equal(CheckLevel.Warn, c.Level);
-        Assert.StartsWith("NVML is slow to answer", c.Hint);
+        Assert.Equal("NVML is slow to answer. Check the driver and the per-call timings in this report.", c.Hint);
     }
 
     [Fact]
