@@ -6,6 +6,24 @@
     <RootNamespace>GpuMonitor.App</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)'=='net10.0-windows10.0.19041.0'">
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(_IsPublishing)'=='true' And '$(TargetFramework)'=='net10.0-windows10.0.19041.0'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <!-- System.Management uses COM interop, which trimming otherwise turns off. -->
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- The report and settings use reflection-based JSON; publishing would otherwise turn that off. -->
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <!-- TrimMode partial leaves GpuMonitor.Core untrimmed, so its JSON reflection keeps its types. Checked on the published exe. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2026;IL3050</WarningsNotAsErrors>
+  </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)'=='net10.0'">
     <Compile Remove="Platform/Windows/**" />
   </ItemGroup>
@@ -17,6 +35,8 @@
   <ItemGroup Condition="'$(TargetFramework)'=='net10.0-windows10.0.19041.0'">
     <PackageReference Include="System.Management" Version="10.0.14" />
     <PackageReference Include="System.Diagnostics.EventLog" Version="10.0.14" />
+    <!-- System.Management creates its COM wrappers by reflection, so trimming must not touch it. -->
+    <TrimmerRootAssembly Include="System.Management" />
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets/icon.png;Assets/icon.ico" />

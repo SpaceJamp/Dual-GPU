@@ -8,6 +8,52 @@ namespace GpuMonitor.App.Tests.Windows;
 public class WindowsPlatformTests
 {
     [Fact]
+    public void MiniDump_ViaHelper_WritesDump()
+    {
+        var path = Path.Combine(VmKit.TempDir(), "x.dmp");
+
+        Assert.Null(MiniDump.WriteViaHelper(CrashHandler.DumpHelper!, path));
+
+        Assert.True(new FileInfo(path).Length > 0);
+    }
+
+    [Fact]
+    public void MiniDump_ViaHelper_MissingHelper_ReportsError()
+    {
+        var error = MiniDump.WriteViaHelper(Path.Combine(VmKit.TempDir(), "nope.exe"), Path.Combine(VmKit.TempDir(), "x.dmp"));
+
+        Assert.NotNull(error);
+    }
+
+    [Fact]
+    public void MiniDump_ViaHelper_DeadProcess_ReportsExitCode()
+    {
+        var error = MiniDump.WriteViaHelper(CrashHandler.DumpHelper!, Path.Combine(VmKit.TempDir(), "x.dmp"), processId: int.MaxValue);
+
+        Assert.Contains("exit code", error);
+    }
+
+    [Fact]
+    public void MiniDump_Retry_SucceedsOnThirdAttempt()
+    {
+        var calls = 0;
+
+        Assert.True(MiniDump.Retry(() => ++calls == 3));
+
+        Assert.Equal(3, calls);
+    }
+
+    [Fact]
+    public void MiniDump_Retry_GivesUpAfterThree()
+    {
+        var calls = 0;
+
+        Assert.False(MiniDump.Retry(() => { calls++; return false; }));
+
+        Assert.Equal(3, calls);
+    }
+
+    [Fact]
     public void Wmi_ListsAdapters()
     {
         if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only");

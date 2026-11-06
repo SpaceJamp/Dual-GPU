@@ -2,6 +2,8 @@
 
 `gpubalance` spreads work across two (or more) GPUs from different vendors on Linux, for example an NVIDIA card next to an AMD card.
 
+On Windows, see the separate GPU monitor app in [windows/README.md](windows/README.md).
+
 ## What it does
 
 Each time you start a program through `gpubalance run`, it:

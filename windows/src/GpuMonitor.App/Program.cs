@@ -13,6 +13,12 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+#if WINDOWS
+        // Started by CrashHandler. It must stay outside the crashing process; see MiniDump.
+        if (args is [Platform.Windows.MiniDump.HelperArgument, var processId, var path])
+            return Platform.Windows.MiniDump.RunHelper(processId, path);
+#endif
+
         var options = CommandLine.Parse(args);
         if (options.Diagnose || options.Error is not null) Platform.Platform.AttachParentConsole();
         if (options.Error is not null)

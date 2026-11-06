@@ -9,9 +9,29 @@ on:
 jobs:
   test:
     runs-on: windows-latest
+    # Two runs once hung in dotnet test until GitHub cancelled them at 6 hours.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: windows/global.json
-      - run: dotnet test windows/GpuMonitor.slnx -c Release
+      - run: dotnet test windows/GpuMonitor.slnx -c Release --blame-hang-timeout 5m
+      - name: Upload hang dumps
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: windows/tests/**/TestResults/**
+          if-no-files-found: ignore
+      - run: dotnet publish windows/src/GpuMonitor.App -c Release -f net10.0-windows10.0.19041.0 -o publish
+      - name: Zip the app
+        shell: pwsh
+        run: |
+          $version = dotnet msbuild windows/src/GpuMonitor.App -getProperty:Version -p:TargetFramework=net10.0-windows10.0.19041.0
+          New-Item -ItemType Directory dist | Out-Null
+          Compress-Archive -Path publish/GpuMonitor.exe, publish/icon.png -DestinationPath "dist/GpuMonitor-$version-win-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GpuMonitor-win-x64
+          path: dist/*.zip

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -8,6 +9,13 @@ using GpuMonitor.App.Tests;
 [assembly: AvaloniaTestApplication(typeof(TestApp))]
 
 namespace GpuMonitor.App.Tests;
+
+internal static class TestSetup
+{
+    // The crash path starts its own exe to write dumps; here that exe is the test host, so point it at the app.
+    [ModuleInitializer]
+    public static void Init() => CrashHandler.DumpHelper = Path.Combine(AppContext.BaseDirectory, "GpuMonitor.exe");
+}
 
 public class TestApp : Application
 {

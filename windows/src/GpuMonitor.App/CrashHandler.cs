@@ -23,6 +23,9 @@ public static class CrashHandler
     private static DateTime _lastStamp = DateTime.MinValue;
     private static Exception? _lastHandled;
 
+    /// <summary>The exe started to write minidumps. Tests point it at the app, since their own exe is the test host.</summary>
+    internal static string? DumpHelper { get; set; } = Environment.ProcessPath;
+
     /// <summary>Call first in Main. The UI thread is hooked later by <see cref="HookDispatcher"/>.</summary>
     public static void Install(AppLog log, string crashDir)
     {
@@ -104,8 +107,7 @@ public static class CrashHandler
         string? dumpError = null;
         try
         {
-            if (!MiniDump.Write(dmp, out var lastError))
-                dumpError = "MiniDumpWriteDump failed, last error 0x" + lastError.ToString("X8", CultureInfo.InvariantCulture);
+            dumpError = DumpHelper is { } helper ? MiniDump.WriteViaHelper(helper, dmp) : "The executable path is unknown";
         }
         catch (Exception dumpEx)
         {
