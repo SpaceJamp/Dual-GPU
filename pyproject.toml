@@ -8,7 +8,7 @@ version = "0.5.0"
 description = "Launch-time workload balancing for Linux machines with GPUs from different vendors"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Apache-2.0" }
+license = { text = "GPL-3.0-only" }
 classifiers = ["Operating System :: POSIX :: Linux"]
 
 [project.scripts]
