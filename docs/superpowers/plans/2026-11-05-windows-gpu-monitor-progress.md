@@ -37,7 +37,7 @@ These only showed up on real hardware or in the published exe, not in the cloud 
 - Publishing failed on IL2026 from reflection JSON, and WMI failed at run time once trimmed. Fixed with allowed warnings, `TrimmerRootAssembly System.Management` and `BuiltInComInteropSupport`. The published exe was run and checked.
 - NVML bit 0x400 is "Reliability" on driver 621.14. It printed as 1024.
 - NVML values match nvidia-smi on the 5080 (temperature, power, driver, bus ID).
-- Windows sees only the RTX 5080 on this PC, so the 4070 Ti SUPER checks in TESTING.md could not run.
+- The PC runs only the RTX 5080: the 4070 Ti SUPER is not installed because it does not fit in the case. One card now passes card-count, and Parts 2 and 3 are shelved until the second card is in. Two-card steps in TESTING.md could not run.
 
 ## Run the checks
 

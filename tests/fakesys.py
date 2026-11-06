@@ -1,6 +1,18 @@
 """Build a fake /sys tree with one AMD and one NVIDIA card."""
 
+import os
 from pathlib import Path
+
+
+def env_without_nvidia_smi(root: Path) -> dict[str, str]:
+    """Environment where nvidia-smi fails, as on a machine with no NVIDIA driver,
+    even when the machine running the tests has one."""
+    bin_dir = root / "no-nvidia-smi"
+    bin_dir.mkdir(exist_ok=True)
+    fake = bin_dir / "nvidia-smi"
+    fake.write_text("#!/bin/sh\nexit 1\n")
+    fake.chmod(0o755)
+    return {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
 
 
 def make_card(root: Path, card: str, slot: str, vendor: str, device: str,

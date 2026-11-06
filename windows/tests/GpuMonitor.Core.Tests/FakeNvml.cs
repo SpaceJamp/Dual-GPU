@@ -69,7 +69,13 @@ public sealed class FakeNvml : INvml
 
     public NvmlReturn Init() { InitCalls++; return InitResult; }
     public int ShutdownCalls { get; private set; }
-    public NvmlReturn Shutdown() { ShutdownCalls++; return NvmlReturn.Success; }
+    public bool ShutdownThrows { get; set; }
+    public NvmlReturn Shutdown()
+    {
+        ShutdownCalls++;
+        if (ShutdownThrows) throw new InvalidOperationException("shutdown failed");
+        return NvmlReturn.Success;
+    }
 
     public NvmlReturn GetDeviceCount(out uint count)
     {

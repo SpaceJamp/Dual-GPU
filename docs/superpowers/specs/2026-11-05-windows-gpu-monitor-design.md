@@ -10,6 +10,10 @@ A Windows desktop app that monitors both NVIDIA cards in the user's PC:
 - RTX 5080, which drives the monitor.
 - RTX 4070 Ti SUPER, the second card.
 
+Update 2026-11-05: the PC runs only the RTX 5080 for now. The 4070 Ti SUPER is
+not installed because it does not fit in the case, so one card is a supported
+setup and Parts 2 and 3 below are shelved until it is in.
+
 The app sits in the system tray, opens a window with live readings, alerts
 through Windows notifications, and gathers detailed diagnostics to track
 down driver, hardware and app problems.
@@ -252,7 +256,7 @@ Checks:
 | ID | Fails or warns when | Level |
 |---|---|---|
 | nvml-load | `nvml.dll` does not load or init fails | fail |
-| card-count | NVML finds fewer than 2 cards | fail |
+| card-count | NVML finds no cards | fail |
 | wmi-match | WMI and NVML list different NVIDIA cards | warn |
 | display-card | No card or more than one drives a monitor, or it is not the 5080 | warn |
 | pcie-width | Current lane width below the card's max | warn |

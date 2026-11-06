@@ -1,11 +1,13 @@
 # Manual checklist
 
-Run these on the PC with both cards, using the published exe (trimming can break things only that build shows). Each step that needs a second card needs the RTX 4070 Ti SUPER visible to Windows first.
+Run these using the published exe, because trimming can break things only that build shows. Steps marked "two cards" need a second card installed; skip them on a one-card PC.
 
 ## Cards and readings
 
-- [ ] Both cards show with the right names, and "Display" is on the 5080.
-- [ ] The tray tooltip names both cards, for example `GPU Monitor: 5080 64°C, 4070 Ti SUPER 58°C`.
+- [ ] The card shows with the right name, and "Display" is on the 5080.
+- [ ] Two cards: both show, each with the right name.
+- [ ] The tray tooltip names the card, for example `GPU Monitor: 5080 64°C`.
+- [ ] Two cards: it names both, for example `GPU Monitor: 5080 64°C, 4070 Ti SUPER 58°C`.
 - [ ] The window's values match `nvidia-smi` within 1°C, 1% and 5 W. Under idle load the window itself adds a little power draw.
 
 ```
@@ -19,8 +21,8 @@ The heat limit can't go below 50°C, so a card has to be warmed up for this test
 - [ ] Set the heat limit to 50°C and put a game or benchmark on a card. You get one toast, not one per second.
 - [ ] If no toast appears, an in-window notice appears when the window is open, and the log says why.
 - [ ] Cool the card below 45°C and heat it again. You get one more toast.
-- [ ] Disable the 4070 Ti SUPER in Device Manager. You get "stopped reporting", and its panel turns gray with "No reading since".
-- [ ] Enable it again. You get "is reporting again".
+- [ ] Two cards: disable the 4070 Ti SUPER in Device Manager. You get "stopped reporting", and its panel turns gray with "No reading since".
+- [ ] Two cards: enable it again. You get "is reporting again".
 
 ## Diagnostics
 

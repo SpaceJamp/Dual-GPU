@@ -11,8 +11,8 @@ The Python tool (`gpubalance`) is Linux only. Windows support was built once and
 ## The user's hardware
 
 - Main card: NVIDIA RTX 5080 (drives the monitor).
-- Second card: NVIDIA RTX 4070 Ti SUPER.
-- Two cards from one vendor, so vendor names are ambiguous in config; use PCI slots.
+- Second card: NVIDIA RTX 4070 Ti SUPER, not installed. It does not fit in the case, so the PC runs one card for now.
+- With both cards, two cards share one vendor, so vendor names are ambiguous in config; use PCI slots.
 
 ## Checks before pushing
 

@@ -8,12 +8,11 @@ namespace GpuMonitor.Core.Diagnostics;
 /// <summary>The eleven diagnostic checks, evaluated over a Facts snapshot.</summary>
 public static class Checks
 {
-    private const int ExpectedCards = 2;
     private const int HeadroomWarnC = 5;
     private const double PollWarnMs = 100;
 
     private const string NvmlLoadHint = @"Install or reinstall the NVIDIA driver. nvml.dll ships with it in C:\Windows\System32.";
-    private const string CardCountHint = "Check that both cards show in Device Manager under Display adapters. Reseat the card or its power cables if one is missing.";
+    private const string CardCountHint = "Check that the card shows in Device Manager under Display adapters. Reseat it or its power cables if it does not.";
     private const string WmiMatchHint = "Windows and the NVIDIA driver disagree about the cards. Restart, then reinstall the driver with a clean install.";
     private const string DisplayCardHint = "Plug the monitor into the RTX 5080, or change \"Expected display card\" in Settings.";
     private const string PcieWidthHint = "Run a game or load first: some boards drop lanes at idle. If it stays low, check the slot and BIOS lane settings.";
@@ -47,10 +46,14 @@ public static class Checks
 
     private static Check CardCount(Facts f)
     {
+        // One card is a normal setup. A second card that Windows sees but NVML doesn't shows up in wmi-match.
         var n = f.Cards.Count;
-        return n >= ExpectedCards
-            ? Pass("card-count", $"{n} cards found")
-            : new(CheckLevel.Fail, "card-count", $"{n} of {ExpectedCards} expected cards found", CardCountHint);
+        return n switch
+        {
+            0 => new(CheckLevel.Fail, "card-count", "No NVIDIA cards found", CardCountHint),
+            1 => Pass("card-count", "1 card found"),
+            _ => Pass("card-count", $"{n} cards found"),
+        };
     }
 
     private static Check WmiMatch(Facts f)
@@ -59,7 +62,7 @@ public static class Checks
             return new(CheckLevel.Info, "wmi-match", "Windows adapter list not available", WmiUnavailableHint);
         var nvidia = list.Count(a => a.Name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase));
         return nvidia == f.Cards.Count
-            ? Pass("wmi-match", $"Windows and NVML both see {nvidia} NVIDIA cards")
+            ? Pass("wmi-match", $"Windows and NVML both see {nvidia} NVIDIA {(nvidia == 1 ? "card" : "cards")}")
             : new(CheckLevel.Warn, "wmi-match", $"Windows sees {nvidia} NVIDIA adapters, NVML sees {f.Cards.Count}", WmiMatchHint);
     }
 

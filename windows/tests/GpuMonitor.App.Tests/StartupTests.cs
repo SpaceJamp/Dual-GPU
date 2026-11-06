@@ -25,12 +25,13 @@ public class StartupTests
     {
         public string Dir { get; } = TempDir();
         public AppLog? Log { get; private set; }
+        public Func<FakeNvml> Make { get; init; } = TwoCards;
 
         public Bootstrap Start()
         {
             Log = new AppLog(Path.Combine(Dir, "app.log"), LogLevel.Debug, false);
             return new Bootstrap(Log, Path.Combine(Dir, "settings.json"), Path.Combine(Dir, "rec"),
-                () => new NvmlLoad(TwoCards(), "nvml.dll", null), NullSources.All(), new FakeStartup(), TimeProvider.System);
+                () => new NvmlLoad(Make(), "nvml.dll", null), NullSources.All(), new FakeStartup(), TimeProvider.System);
         }
 
         public void Dispose() => Log?.Dispose();
@@ -44,10 +45,9 @@ public class StartupTests
         return fake;
     }
 
-    private static FactCollector OneCard()
+    private static FactCollector NoCards()
     {
         var fake = new FakeNvml();
-        fake.Add(Bus1, "NVIDIA GeForce RTX 5080");
         return new FactCollector(fake, NvmlReturn.Success, "nvml.dll", null, NullSources.All(),
             new AppState("1.0", "abc", ".NET", new AppSettings(), SettingsStatus.Missing, null, [],
                 new Dictionary<string, TimingStats>(), [], true));
@@ -57,7 +57,7 @@ public class StartupTests
     public void Diagnose_WritesReportAndExitCode()
     {
         var o = new StringWriter();
-        var code = Program.RunDiagnose(CommandLine.Parse(["--diagnose"]), OneCard(), o, new StringWriter());
+        var code = Program.RunDiagnose(CommandLine.Parse(["--diagnose"]), NoCards(), o, new StringWriter());
 
         Assert.Contains("[FAIL] card-count", o.ToString());
         Assert.Equal(1, code);
@@ -69,7 +69,7 @@ public class StartupTests
         var path = Path.Combine(TempDir(), "r.json");
         var o = new StringWriter();
 
-        Program.RunDiagnose(CommandLine.Parse(["--diagnose", "--json", "-o", path]), OneCard(), o, new StringWriter());
+        Program.RunDiagnose(CommandLine.Parse(["--diagnose", "--json", "-o", path]), NoCards(), o, new StringWriter());
 
         Assert.Equal("", o.ToString());
         Assert.StartsWith("{", File.ReadAllText(path));
@@ -83,7 +83,7 @@ public class StartupTests
         var err = new StringWriter();
 
         var code = Program.RunDiagnose(CommandLine.Parse(["--diagnose", "-o", Path.Combine(blocker, "r.txt")]),
-            OneCard(), new StringWriter(), err);
+            NoCards(), new StringWriter(), err);
 
         Assert.Equal(2, code);
         Assert.Contains("Could not write", err.ToString());
@@ -228,6 +228,26 @@ public class StartupTests
         }
         Assert.Contains("GPU Monitor diagnostic report", shell.ViewModel.Diagnostics.ReportText);
         shell.Exit();
+    }
+
+    [AvaloniaFact]
+    public void Shell_Exit_QuitsEvenWhenCleanupFails()
+    {
+        using var boot = new Boot
+        {
+            Make = () => { var f = TwoCards(); f.ShutdownThrows = true; return f; },
+        };
+        using var b = boot.Start();
+        var (shell, _, exits) = MakeShell(b);
+        shell.Start(hidden: false);
+        var closed = false;
+        shell.Window.Closed += (_, _) => closed = true;
+
+        shell.Exit();
+
+        Assert.True(closed);
+        Assert.Equal([0], exits);
+        Assert.Contains("shutdown failed", File.ReadAllText(Path.Combine(boot.Dir, "app.log")));
     }
 
     [AvaloniaFact]

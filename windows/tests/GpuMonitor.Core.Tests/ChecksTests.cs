@@ -42,13 +42,31 @@ public class ChecksTests
     }
 
     [Fact]
-    public void CardCount_OneCard_Fail()
+    public void CardCount_OneCard_Pass()
     {
         var b = new FactsBuilder(); b.Cards.RemoveAt(1);
         var c = Get(b, "card-count");
+        Assert.Equal(CheckLevel.Pass, c.Level);
+        Assert.Equal("1 card found", c.Message);
+    }
+
+    [Fact]
+    public void CardCount_NoCards_Fail()
+    {
+        var b = new FactsBuilder(); b.Cards.Clear();
+        var c = Get(b, "card-count");
         Assert.Equal(CheckLevel.Fail, c.Level);
-        Assert.Equal("1 of 2 expected cards found", c.Message);
-        Assert.Equal("Check that both cards show in Device Manager under Display adapters. Reseat the card or its power cables if one is missing.", c.Hint);
+        Assert.Equal("No NVIDIA cards found", c.Message);
+        Assert.Contains("Device Manager", c.Hint);
+    }
+
+    [Fact]
+    public void WmiMatch_OneCard_ReadsAsSingular()
+    {
+        var b = new FactsBuilder(); b.Cards.RemoveAt(1);
+        b.Wmi = Fact<IReadOnlyList<WmiAdapter>>.Of([new WmiAdapter("NVIDIA GeForce RTX 5080", "1", "PCI", "OK")]);
+
+        Assert.Equal("Windows and NVML both see 1 NVIDIA card", Get(b, "wmi-match").Message);
     }
 
     [Fact]

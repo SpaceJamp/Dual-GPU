@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fakesys import make_mixed, nvidia_smi, plug_monitor  # noqa: E402
+from fakesys import env_without_nvidia_smi, make_mixed, nvidia_smi, plug_monitor  # noqa: E402
 from gpubalance import diagnose  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
@@ -39,7 +39,7 @@ class Base(unittest.TestCase):
                "--root", str(self.root), "--state", str(self.root / "s.json"),
                "--config", str(config or self.root / "none.toml"),
                "--log-file", str(self.log), *args]
-        env = {k: v for k, v in os.environ.items() if k not in diagnose.STEERING_VARS}
+        env = {k: v for k, v in env_without_nvidia_smi(self.root).items() if k not in diagnose.STEERING_VARS}
         return subprocess.run(cmd, capture_output=True, text=True, cwd=REPO, env=env)
 
     def checks(self, report):

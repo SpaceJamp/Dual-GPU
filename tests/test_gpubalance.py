@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fakesys import make_mixed, nvidia_smi, plug_monitor  # noqa: E402
+from fakesys import env_without_nvidia_smi, make_mixed, nvidia_smi, plug_monitor  # noqa: E402
 from gpubalance import config, detect, launch, metrics, policy  # noqa: E402
 from gpubalance.state import State  # noqa: E402
 
@@ -178,7 +178,8 @@ class CliTest(Base):
                "--state", str(self.root / "s.json"), "--config", str(self.root / "none.toml"),
                "--log-file", str(self.root / "gpubalance.log"), *args]
         return subprocess.run(cmd, capture_output=True, text=True,
-                              cwd=Path(__file__).resolve().parent.parent)
+                              cwd=Path(__file__).resolve().parent.parent,
+                              env=env_without_nvidia_smi(self.root))
 
     def test_list_and_dry_run(self):
         out = self.run_cli("list")

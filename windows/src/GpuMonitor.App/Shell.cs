@@ -74,7 +74,9 @@ internal sealed class Shell
     {
         if (_exited) return;
         _exited = true;
-        _boot.Dispose();
+        // Exit must always quit: the menu command swallows errors, so a throw here would leave no way out.
+        try { _boot.Dispose(); }
+        catch (Exception ex) { _boot.Log.Error("startup", "Cleanup on exit failed: " + ex.Message, ex); }
         Tray.Dispose();
         App.IsExiting = true;
         Window.Close();
