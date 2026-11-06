@@ -15,6 +15,30 @@ public class ViewModelTests
     private const string Bus1 = "00000000:01:00.0";
     private const string Bus2 = "00000000:02:00.0";
 
+    [AvaloniaFact]
+    public void MainViewModel_BannerClearsWhenNvmlLoads()
+    {
+        var vm = MainVm(TempDir(), NvmlReturn.LibraryNotFound, "gone");
+
+        vm.SetNvmlStatus(NvmlReturn.Success, null);
+
+        Assert.Equal("", vm.Banner);
+    }
+
+    [AvaloniaFact]
+    public void Settings_Save_LogsChangedValues()
+    {
+        var log = new AppLog(null, LogLevel.Debug, false);
+        var lines = new List<LogLine>();
+        log.Line += lines.Add;
+        var vm = MainVm(TempDir(), log: log);
+
+        vm.Settings.HeatLimitC = 70;
+        vm.Settings.Save();
+
+        Assert.Single(lines, l => l.Source == "settings" && l.Message.Contains("HeatLimitC = 70"));
+    }
+
     [Fact]
     public void CardViewModel_StaleAfter5s()
     {

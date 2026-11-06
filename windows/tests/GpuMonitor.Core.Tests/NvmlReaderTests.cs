@@ -22,6 +22,18 @@ public class NvmlReaderTests
     }
 
     [Fact]
+    public void NewCard_LoggedOnce()
+    {
+        var (fake, reader, lines) = Make();
+        fake.Add(BusA, "RTX 5080");
+
+        reader.Poll(T0);
+        reader.Poll(T0.AddSeconds(1));
+
+        Assert.Single(lines, l => l.Level == LogLevel.Info && l.Message.Contains("card found") && l.Message.Contains(BusA));
+    }
+
+    [Fact]
     public void Poll_TwoCards_ConvertsUnits()
     {
         var (fake, reader, _) = Make();

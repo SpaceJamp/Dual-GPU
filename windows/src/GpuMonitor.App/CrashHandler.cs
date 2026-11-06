@@ -23,7 +23,7 @@ public static class CrashHandler
     private static DateTime _lastStamp = DateTime.MinValue;
     private static Exception? _lastHandled;
 
-    /// <summary>Call on the UI thread at startup: it reads Dispatcher.UIThread.</summary>
+    /// <summary>Call first in Main. The UI thread is hooked later by <see cref="HookDispatcher"/>.</summary>
     public static void Install(AppLog log, string crashDir)
     {
         Configure(log, crashDir);
@@ -36,8 +36,12 @@ public static class CrashHandler
             Handle("AppDomain", e.ExceptionObject as Exception
                 ?? new InvalidOperationException("Non-exception object thrown: " + e.ExceptionObject));
         TaskScheduler.UnobservedTaskException += (_, e) => Handle("TaskScheduler", e.Exception);
-        Dispatcher.UIThread.UnhandledException += (_, e) => Handle("Dispatcher", e.Exception);
     }
+
+    /// <summary>Call after Avalonia's platform is set up: reading Dispatcher.UIThread any earlier could
+    /// create the dispatcher without the platform's message loop.</summary>
+    public static void HookDispatcher() =>
+        Dispatcher.UIThread.UnhandledException += (_, e) => Handle("Dispatcher", e.Exception);
 
     /// <summary>Sets the log and folder without hooking any event (tests use this so the
     /// test host's dispatcher and process-wide handlers are left alone).</summary>

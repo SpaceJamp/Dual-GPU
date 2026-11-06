@@ -25,6 +25,17 @@ public sealed class PollerTests
     }
 
     [Fact]
+    public void PollOnce_LogsAlertsWithValue()
+    {
+        var (p, r, _, _, lines, _) = Build();
+        r.OnPoll = now => new[] { Make.Reading(CardA.BusId, now, temp: 85) };
+
+        p.PollOnce();
+
+        Assert.Single(lines, l => l.Level == LogLevel.Info && l.Message.Contains("RTX 5080 is hot") && l.Message.Contains("85"));
+    }
+
+    [Fact]
     public void PollOnce_PassesReadingsToRulesAndHistory()
     {
         var (p, r, h, _, _, _) = Build();

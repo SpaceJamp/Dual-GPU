@@ -9,8 +9,8 @@ public class NvmlApiTests
     [Fact]
     public void TryLoad_NoDriver_ReturnsFalseWithError()
     {
-        // This container has no NVIDIA driver.
         var ok = NvmlApi.TryLoad(out var api, out var error);
+        Assert.SkipWhen(ok, "This machine has an NVIDIA driver; CI covers the no-driver path.");
 
         Assert.False(ok);
         Assert.Null(api);

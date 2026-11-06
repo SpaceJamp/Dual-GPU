@@ -23,10 +23,18 @@ public partial class MainWindow : Window
     private Task CopyToClipboard(string text) =>
         Clipboard is { } clipboard ? clipboard.SetTextAsync(text) : Task.CompletedTask;
 
+    public void ShowTab(string header) =>
+        Tabs.SelectedItem = Tabs.Items.OfType<TabItem>().First(t => (string?)t.Header == header);
+
+    /// <summary>Closing hides the window, unless the app is exiting or Windows is ending the session:
+    /// cancelling then would hold up sign-out.</summary>
+    internal static bool ShouldHide(WindowCloseReason reason, bool exiting) =>
+        !exiting && reason is not (WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown);
+
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         base.OnClosing(e);
-        if (!App.IsExiting)
+        if (ShouldHide(e.CloseReason, App.IsExiting))
         {
             e.Cancel = true;
             Hide();

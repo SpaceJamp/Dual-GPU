@@ -17,7 +17,7 @@
                Text="{Binding Banner}"
                IsVisible="{Binding Banner, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
 
-    <TabControl>
+    <TabControl x:Name="Tabs">
       <TabItem Header="Cards">
         <ScrollViewer>
           <ItemsControl ItemsSource="{Binding Cards}" Margin="8">

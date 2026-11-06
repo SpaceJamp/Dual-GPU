@@ -86,10 +86,24 @@ public sealed class SettingsViewModel : ObservableBase
             Status = "Could not change start with Windows: " + ex.Message;
         }
 
+        LogChange(nameof(s.RefreshSeconds), before.RefreshSeconds, s.RefreshSeconds);
+        LogChange(nameof(s.HeatLimitC), before.HeatLimitC, s.HeatLimitC);
+        LogChange(nameof(s.VramLimitPct), before.VramLimitPct, s.VramLimitPct);
+        LogChange(nameof(s.LogLevel), before.LogLevel, s.LogLevel);
+        LogChange(nameof(s.LogJson), before.LogJson, s.LogJson);
+        LogChange(nameof(s.StartWithWindows), before.StartWithWindows, s.StartWithWindows);
+        LogChange(nameof(s.ExpectedDisplayCard), before.ExpectedDisplayCard, s.ExpectedDisplayCard);
+
         _log.Level = s.LogLevel;
         _log.Json = s.LogJson;
         _current.Value = s;
         Saved?.Invoke(s);
+    }
+
+    private void LogChange<T>(string name, T before, T after)
+    {
+        if (!EqualityComparer<T>.Default.Equals(before, after))
+            _log.Info(Source, $"{name} = {after} (was {before})");
     }
 
     internal void ShowStatus(string message) => Status = message;

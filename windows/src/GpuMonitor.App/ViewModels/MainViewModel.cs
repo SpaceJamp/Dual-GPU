@@ -8,8 +8,8 @@ namespace GpuMonitor.App.ViewModels;
 /// <summary>Root view model of the main window.</summary>
 public sealed class MainViewModel : ObservableBase
 {
-    private readonly NvmlReturn _initCode;
-    private readonly string? _loadError;
+    private NvmlReturn _initCode;
+    private string? _loadError;
     private readonly AppLog _log;
     private readonly History _history;
     private readonly CurrentSettings _settings;
@@ -56,6 +56,14 @@ public sealed class MainViewModel : ObservableBase
 
     /// <summary>Heat limit drawn on the cards' temperature graphs.</summary>
     public int HeatLimitC { get => _heatLimitC; private set => Set(ref _heatLimitC, value); }
+
+    /// <summary>NVML can load after startup, so the banner follows the reader's current state.</summary>
+    public void SetNvmlStatus(NvmlReturn initCode, string? loadError)
+    {
+        _initCode = initCode;
+        _loadError = loadError;
+        UpdateBanner();
+    }
 
     /// <summary>Applies a poll. The caller invokes it on the UI thread.</summary>
     public void OnPolled(PollResult r)

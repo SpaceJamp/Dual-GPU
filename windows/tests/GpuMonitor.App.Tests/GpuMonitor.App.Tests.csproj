@@ -17,5 +17,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/GpuMonitor.App/GpuMonitor.App.csproj" />
+    <Compile Include="../GpuMonitor.Core.Tests/FakeNvml.cs" Link="FakeNvml.cs" />
   </ItemGroup>
 </Project>

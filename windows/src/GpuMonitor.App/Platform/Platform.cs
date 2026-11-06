@@ -21,6 +21,13 @@ public static class Platform
 #endif
     }
 
+    public static void AttachParentConsole()
+    {
+#if WINDOWS
+        ParentConsole.Attach();
+#endif
+    }
+
     public static IStartup Startup()
     {
 #if WINDOWS

@@ -105,7 +105,7 @@ public sealed class TrayController : IDisposable
     private static NativeMenuItem Item(string header, Action action) =>
         new(header) { Command = new RelayCommand(action) };
 
-    private void Open()
+    public void Open()
     {
         var window = _showWindow();
         if (!window.IsVisible) window.Show();

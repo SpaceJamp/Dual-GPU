@@ -114,6 +114,7 @@ public sealed class Poller : IDisposable
             var readings = _reader.Poll(now);
             var settings = _settings();
             var alerts = _rules.Evaluate(_reader.Cards, readings, now, settings);
+            foreach (var a in alerts) _log.Info(Source, a.Title + ": " + a.Message);
             foreach (var r in readings) _history.Add(r, settings.RefreshSeconds);
             sw.Stop();
             result = new PollResult(now, _reader.Cards, readings, alerts, sw.Elapsed);

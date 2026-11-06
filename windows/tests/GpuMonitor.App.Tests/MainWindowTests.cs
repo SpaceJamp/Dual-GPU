@@ -35,6 +35,17 @@ public class MainWindowTests
         Assert.Equal(620, window.Height);
     }
 
+    [Theory]
+    [InlineData(WindowCloseReason.WindowClosing, false, true)]
+    [InlineData(WindowCloseReason.Undefined, false, true)]
+    [InlineData(WindowCloseReason.WindowClosing, true, false)]
+    [InlineData(WindowCloseReason.OSShutdown, false, false)]
+    [InlineData(WindowCloseReason.ApplicationShutdown, false, false)]
+    public void ShouldHide_LetsWindowsEndTheSession(WindowCloseReason reason, bool exiting, bool expected)
+    {
+        Assert.Equal(expected, MainWindow.ShouldHide(reason, exiting));
+    }
+
     [AvaloniaFact]
     public void Close_HidesNotExits()
     {

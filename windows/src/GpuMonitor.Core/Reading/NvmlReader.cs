@@ -58,6 +58,7 @@ public sealed class NvmlReader : ICardReader
                     uuid = "";
                 card = new Card(busId, name, uuid, (int)i);
                 _cards.Add(card);
+                _log.Info("nvml", $"card found: {name} ({busId})");
             }
             else
             {
