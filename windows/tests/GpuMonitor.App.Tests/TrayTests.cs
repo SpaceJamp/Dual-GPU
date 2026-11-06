@@ -34,6 +34,17 @@ public class TrayTests
         new(Application.Current!, () => new Window(), () => { }, () => { }, () => { });
 
     [AvaloniaFact]
+    public void Tray_ReusesIconWhenStateReturns()
+    {
+        // Every rendered WindowIcon holds native icon handles, so temperatures going up and down must not add more.
+        var tray = Controller();
+        foreach (var t in new[] { 64, 65, 64, 65, 64 }) tray.Update(Poll(t, null), 80, false);
+
+        Assert.Equal(2, tray.RenderCount);
+        Assert.Equal(64, tray.ShownTempC);
+    }
+
+    [AvaloniaFact]
     public void TrayIcon_RendersNumberAndWarning()
     {
         Assert.NotNull(TrayIconRenderer.Render(64, false, 80));

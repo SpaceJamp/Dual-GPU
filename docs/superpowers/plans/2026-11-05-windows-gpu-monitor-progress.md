@@ -22,7 +22,7 @@ Handoff note for continuing the plan in `2026-11-05-windows-gpu-monitor.md` outs
 | 14 View models and main window | done, reviewed |
 | 15 Tray, notifications, single instance | done, reviewed |
 | 16 Startup wiring and command line | done |
-| 17 Publish, docs, checklist | done, not pushed; CI publish step not run yet |
+| 17 Publish, docs, checklist | done, CI publish passing |
 
 Tasks ran in the order 1, 2, 7, 3, 4, 5, 6, 8 to 15 (ruling 1).
 
@@ -35,6 +35,7 @@ These only showed up on real hardware or in the published exe, not in the cloud 
 - The CI hangs and the flaky App test had the same source. MiniDumpWriteDump on our own process suspends every other thread, and deadlocks if one holds the loader lock. Parallel test runs hung most of the time on Windows, and a real crash could have frozen the app. Dumps now come from a helper process (`GpuMonitor.exe --write-dump <pid> <path>`). Before the fix: 4 hangs in the first 5 runs. After: 0 in 45.
 - MiniDumpWriteDump also fails about 1 time in 60 on a busy process, which was the flaky test. The helper tries 3 times.
 - Publishing failed on IL2026 from reflection JSON, and WMI failed at run time once trimmed. Fixed with allowed warnings, `TrimmerRootAssembly System.Management` and `BuiltInComInteropSupport`. The published exe was run and checked.
+- A 3-minute run showed the tray leaking native icon handles on every temperature change: GDI objects went from 73 to 172, on course for the 10,000 limit within hours under load. Icons are now cached per shown state, and GDI stayed flat at idle (55 to 58). A long session under load is on the TESTING.md list.
 - NVML bit 0x400 is "Reliability" on driver 621.14. It printed as 1024.
 - NVML values match nvidia-smi on the 5080 (temperature, power, driver, bus ID).
 - The PC runs only the RTX 5080: the 4070 Ti SUPER is not installed because it does not fit in the case. One card now passes card-count, and Parts 2 and 3 are shelved until the second card is in. Two-card steps in TESTING.md could not run.

@@ -37,6 +37,7 @@ The heat limit can't go below 50°C, so a card has to be warmed up for this test
 - [ ] Closing the window hides it. The tray icon opens it again.
 - [ ] A second launch brings the running window forward, and no second process stays.
 - [ ] Exit in the tray menu ends the process, and the tray icon goes away.
+- [ ] Leave it running through a long game session. In Task Manager's Details tab, add the GDI objects column: it levels off instead of climbing.
 - [ ] Start with Windows takes effect after sign-out and sign-in: the app starts hidden in the tray.
 - [ ] Signing out with the app running is not held up by it.
 - [ ] Sleep the PC and wake it. There's no false "stopped reporting" alert, and the graphs show a gap instead of a line across it.

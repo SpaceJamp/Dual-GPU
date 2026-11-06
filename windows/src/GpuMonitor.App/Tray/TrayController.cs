@@ -18,6 +18,9 @@ public sealed class TrayController : IDisposable
     private readonly Action _openSettings;
     private readonly Action _createReport;
     private readonly Action _exit;
+    // One icon per shown state. Each WindowIcon holds native icon handles that aren't freed when replaced,
+    // so drawing a new one per temperature change ran toward the 10,000 GDI object limit within hours.
+    private readonly Dictionary<(int? TempC, bool Warning, bool OverLimit), WindowIcon> _icons = new();
     private TrayIcon? _tray;
     private WindowIcon? _icon;
     private (int? TempC, bool Warning, bool OverLimit)? _shown;
@@ -30,6 +33,7 @@ public sealed class TrayController : IDisposable
         _openSettings = openSettings;
         _createReport = createReport;
         _exit = exit;
+        app.ActualThemeVariantChanged += (_, _) => _icons.Clear();
     }
 
     public string ToolTipText { get; private set; } = AppName;
@@ -76,8 +80,13 @@ public sealed class TrayController : IDisposable
         var state = (hottest, warning, hottest >= heatLimit);
         if (_shown == state) return;
         _shown = state;
-        _icon = TrayIconRenderer.Render(hottest, warning, heatLimit);
-        RenderCount++;
+        if (!_icons.TryGetValue(state, out var icon))
+        {
+            icon = TrayIconRenderer.Render(hottest, warning, heatLimit);
+            _icons[state] = icon;
+            RenderCount++;
+        }
+        _icon = icon;
         if (_tray is not null) _tray.Icon = _icon;
     }
 
