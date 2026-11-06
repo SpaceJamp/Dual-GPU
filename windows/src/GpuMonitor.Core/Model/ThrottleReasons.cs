@@ -15,6 +15,7 @@ public enum ThrottleReasons : ulong
     HwThermalSlowdown = 0x40,
     HwPowerBrakeSlowdown = 0x80,
     DisplayClockSetting = 0x100,
+    Reliability = 0x400,
 }
 
 public static class ThrottleReasonsExtensions

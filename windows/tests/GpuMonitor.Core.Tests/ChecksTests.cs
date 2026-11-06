@@ -198,6 +198,16 @@ public class ChecksTests
     }
 
     [Fact]
+    public void Throttle_ReliabilityBit_IsNamed()
+    {
+        // Seen on an RTX 5080 with driver 621.14: nvidia-smi says Reliability: Active, NVML returns 0x400.
+        var b = new FactsBuilder().WithCard(0, c => c with { Throttle = Fact<ThrottleReasons>.Of((ThrottleReasons)0x400) });
+        var check = Assert.Single(Checks.Run(b.Build()), c => c.Id == "throttle");
+        Assert.Equal(CheckLevel.Info, check.Level);
+        Assert.Contains("Reliability", check.Message);
+    }
+
+    [Fact]
     public void Throttle_OtherBit_Info()
     {
         var b = new FactsBuilder().WithCard(0, c => c with { Throttle = Fact<ThrottleReasons>.Of(ThrottleReasons.SyncBoost) });
